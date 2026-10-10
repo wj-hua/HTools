@@ -1,17 +1,20 @@
 import Foundation
 
-/// Formats token counts using Chinese-style "w" (万, 10^4) and "亿" (10^8) suffixes,
-/// since raw counts get unreadable once usage crosses into the millions and billions.
+/// Formats token counts using K, M, B, and T suffixes in powers of 1,000.
 enum TokenFormat {
     static func string(_ n: Int) -> String {
         let value = Double(n)
         switch n {
-        case ..<10_000:
+        case ..<1_000:
             return n.formatted(.number.grouping(.automatic))
-        case ..<100_000_000:
-            return String(format: "%.2fw", value / 10_000)
+        case ..<1_000_000:
+            return String(format: "%.2fK", value / 1_000)
+        case ..<1_000_000_000:
+            return String(format: "%.2fM", value / 1_000_000)
+        case ..<1_000_000_000_000:
+            return String(format: "%.2fB", value / 1_000_000_000)
         default:
-            return String(format: "%.2f亿", value / 100_000_000)
+            return String(format: "%.2fT", value / 1_000_000_000_000)
         }
     }
 
