@@ -12,8 +12,7 @@ struct UsageEvent: Codable {
 
     /// The tool's own identifier for the request that produced this turn, when it
     /// exposes one. Used to drop repeats when a tool copies an entry into a second
-    /// file (StepCode's `/fork` and `/clone` do) so the same request is not counted
-    /// twice.
+    /// file so the same request is not counted twice.
     let requestID: String?
 
     init(

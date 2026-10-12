@@ -4,7 +4,7 @@
 
 | 侧边栏 | 来源 | 说明 |
 | --- | --- | --- |
-| Token 用量 | used-token | 按小时/天/周/月/总计统计 Claude Code、Codex、agy、pi、ZCode、StepCode 的 Token，含趋势图 |
+| Token 用量 | used-token | 按小时/天/周/月/总计统计 Claude Code、Codex、agy、Cline 的 Token，含趋势图 |
 | 进程与内存 | used-token | 页面可见时每 3 秒刷新，可结束单个或全部进程 |
 | 常用文本 | clipboard | 管理标签与文本；在任意应用按 `⌥ Space` 呼出原有的快速粘贴面板 |
 | 手机调试 | adb-app | ADB / HDC 设备：截屏、录屏、内嵌实时投屏（Android 可点击/拖动操作，无需 scrcpy；鸿蒙为只读预览）、安装（可直接拖入窗口）、无线连接与配对、开发者选项、前台应用 |

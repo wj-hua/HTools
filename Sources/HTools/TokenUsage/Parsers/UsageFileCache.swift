@@ -13,7 +13,7 @@ final class UsageFileCache {
 
     /// Bump whenever a parser's output changes for the same input file, so events
     /// saved by an older build are discarded instead of reused.
-    private static let formatVersion = 1
+    private static let formatVersion = 2
 
     private struct Stamp: Codable, Equatable {
         let modificationDate: Date

@@ -24,7 +24,7 @@ struct TokenUsageView: View {
                     ContentUnavailableView {
                         Label("暂无 Token 消耗数据", systemImage: "chart.bar.doc.horizontal")
                     } description: {
-                        Text("支持 Claude Code、Codex、agy、pi、ZCode、StepCode 的本地日志")
+                        Text("支持 Claude Code、Codex、agy、Cline 的本地日志")
                     } actions: {
                         Button("重新扫描") { store.refresh() }
                     }

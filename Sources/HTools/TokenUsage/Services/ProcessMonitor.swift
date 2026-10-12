@@ -162,19 +162,15 @@ final class ProcessMonitor: ObservableObject {
             } else if binaryName == "agy" {
                 matchedTool = .agy
                 displayName = "agy"
-            } else if binaryName == "pi" || binaryName == "pi-rpc" {
-                matchedTool = .pi
-                displayName = binaryName
-            } else if binaryName == "zcode" || binaryName == "zcode-cli" {
-                matchedTool = .zcode
-                displayName = binaryName
-            } else if binaryName.hasPrefix("zcode helper") || binaryName == "zcode-node-repl-mcp" || binaryName.hasPrefix("zcode-host-") {
-                matchedTool = .zcode
-                displayName = binaryName
-                isMain = false
-            } else if binaryName == "step" {
-                matchedTool = .stepcode
-                displayName = "step"
+            } else if binaryName == "cline" || binaryName == ".cline" || binaryName == "cline-core" {
+                matchedTool = .cline
+                displayName = "cline"
+                if let args = getProcessArguments(pid: pid), args.contains("--cline-hub-daemon") {
+                    displayName = "cline (hub)"
+                    isMain = false
+                } else if binaryName == "cline-core" {
+                    isMain = false
+                }
             } else if isScriptInterpreter(binaryName) {
                 // Script interpreter: inspect process arguments
                 if let args = getProcessArguments(pid: pid), args.count > 1 {
@@ -183,11 +179,6 @@ final class ProcessMonitor: ObservableObject {
                         if lower.hasSuffix("/codex") || lower.hasSuffix("/codex.js") || lower.contains("@openai/codex") {
                             matchedTool = .codex
                             displayName = "\(binaryName) (codex)"
-                            isMain = false
-                            break
-                        } else if lower.hasSuffix("/pi") || lower.hasSuffix("/pi.js") || lower.contains("@earendil-works/pi-coding-agent") {
-                            matchedTool = .pi
-                            displayName = "\(binaryName) (pi)"
                             isMain = false
                             break
                         } else if lower.hasSuffix("/claude") || lower.hasSuffix("/claude.js") || lower.contains("@anthropic-ai/claude-code") {
@@ -200,9 +191,9 @@ final class ProcessMonitor: ObservableObject {
                             displayName = "\(binaryName) (agy)"
                             isMain = false
                             break
-                        } else if lower.hasSuffix("/step") || lower.contains("/stepcode/") {
-                            matchedTool = .stepcode
-                            displayName = "\(binaryName) (step)"
+                        } else if lower.hasSuffix("/cline") || lower.hasSuffix("/cline.js") || lower.contains("/node_modules/cline/") || lower.contains("/node_modules/@cline/") {
+                            matchedTool = .cline
+                            displayName = "\(binaryName) (cline)"
                             isMain = false
                             break
                         }

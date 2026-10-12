@@ -77,13 +77,10 @@ final class UsageStore: ObservableObject {
             all.append(contentsOf: ClaudeCodeParser.parseAll())
             all.append(contentsOf: CodexParser.parseAll())
             all.append(contentsOf: AgyParser.parseAll())
-            all.append(contentsOf: PiParser.parseAll())
-            all.append(contentsOf: ZCodeParser.parseAll())
-            all.append(contentsOf: StepCodeParser.parseAll())
+            all.append(contentsOf: ClineParser.parseAll())
             UsageFileCache.shared.save()
 
-            // StepCode forks copy a branch's entries into a second session file, so the
-            // same request can arrive twice. Drop the repeats before bucketing.
+            // Drop repeated requests from copied session histories before bucketing.
             var seenRequestIDs = Set<String>()
             all = all.filter { event in
                 guard let requestID = event.requestID else { return true }
