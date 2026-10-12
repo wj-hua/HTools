@@ -4,6 +4,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case tokens
     case processes
     case snippets
+    case tasks
     case devices
 
     var id: String { rawValue }
@@ -13,6 +14,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .tokens: return "Token 用量"
         case .processes: return "进程与内存"
         case .snippets: return "常用文本"
+        case .tasks: return "任务清单"
         case .devices: return "手机调试"
         }
     }
@@ -22,6 +24,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .tokens: return "chart.bar.xaxis"
         case .processes: return "memorychip"
         case .snippets: return "text.quote"
+        case .tasks: return "checklist"
         case .devices: return "iphone.gen3"
         }
     }
@@ -36,6 +39,7 @@ struct RootView: View {
             SidebarView(
                 selection: $selection,
                 processMonitor: model.processMonitor,
+                taskStore: model.taskStore,
                 devices: model.devices
             )
             .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
@@ -54,6 +58,8 @@ struct RootView: View {
             ProcessesView(monitor: model.processMonitor)
         case .snippets:
             SnippetsView(store: model.pasteStore)
+        case .tasks:
+            TasksView(store: model.taskStore)
         case .devices:
             DevicesView()
         }
@@ -63,6 +69,7 @@ struct RootView: View {
 private struct SidebarView: View {
     @Binding var selection: AppSection
     @ObservedObject var processMonitor: ProcessMonitor
+    @ObservedObject var taskStore: TaskStore
     @ObservedObject var devices: DeviceController
 
     var body: some View {
@@ -73,6 +80,7 @@ private struct SidebarView: View {
             }
             Section("效率") {
                 row(.snippets)
+                row(.tasks, badge: taskStore.pendingCount)
             }
             Section("移动设备") {
                 row(.devices, badge: devices.connectedCount)

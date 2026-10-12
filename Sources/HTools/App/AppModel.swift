@@ -18,6 +18,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var isHotKeyRegistered = false
     @Published private(set) var isAccessibilityTrusted = false
 
+    // 任务清单
+    let taskStore = TaskStore()
+
     // 设备
     let devices = DeviceController()
 
