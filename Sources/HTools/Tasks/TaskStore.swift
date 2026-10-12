@@ -118,14 +118,19 @@ final class TaskStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([TaskItem].self, from: data) else {
-            // 文件不存在或已损坏时从空列表开始，不影响启动。
+        guard fileManager.fileExists(atPath: fileURL.path) else {
             tasks = []
             return
         }
-        tasks = decoded
-        normalizeInMemory()
+        do {
+            let data = try Data(contentsOf: fileURL)
+            tasks = try JSONDecoder().decode([TaskItem].self, from: data)
+            normalizeInMemory()
+        } catch {
+            // 文件已损坏时先留底再从空列表开始，不影响启动，也不会被下一次保存覆盖。
+            fileManager.backUpUnreadableFile(at: fileURL)
+            tasks = []
+        }
     }
 
     private func normalizeAndSave() {

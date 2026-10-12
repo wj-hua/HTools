@@ -82,7 +82,8 @@ final class RecordingController {
                     "-y", "-i", temporaryMP4.path,
                     "-vf", "fps=12,scale='min(1080,iw)':-1:flags=lanczos",
                     destination.path
-                ]
+                ],
+                timeout: CommandRunner.longTimeout
             )
             guard conversion.status == 0 else {
                 throw ADBBarError.commandFailed(conversion.combinedText)
@@ -92,7 +93,10 @@ final class RecordingController {
     }
 
     private func pull(remotePath: String, serial: String, destination: URL) async throws {
-        let result = await adb.runADB(["-s", serial, "pull", remotePath, destination.path])
+        let result = await adb.runADB(
+            ["-s", serial, "pull", remotePath, destination.path],
+            timeout: CommandRunner.longTimeout
+        )
         guard result.status == 0, FileManager.default.fileExists(atPath: destination.path) else {
             throw ADBBarError.commandFailed(result.combinedText)
         }

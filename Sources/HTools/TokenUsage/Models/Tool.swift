@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum Tool: String, CaseIterable, Identifiable {
+enum Tool: String, CaseIterable, Identifiable, Codable {
     case claude = "Claude Code"
     case codex = "Codex"
     case agy = "agy"

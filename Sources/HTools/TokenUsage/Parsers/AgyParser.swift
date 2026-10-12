@@ -25,33 +25,58 @@ enum AgyParser {
     }
 
     private static func parseDatabase(at url: URL) -> [UsageEvent] {
-        UsageFileCache.shared.events(for: url) { parseDatabaseUncached(at: url) }
+        // The database is in WAL mode: turns of a running session land in the -wal
+        // file first, so its changes must invalidate the cache too.
+        let walURL = URL(fileURLWithPath: url.path + "-wal")
+        return UsageFileCache.shared.events(for: url, companions: [walURL]) {
+            parseDatabaseUncached(at: url, walURL: walURL)
+        }
     }
 
-    private static func parseDatabaseUncached(at url: URL) -> [UsageEvent] {
-        // These databases are actively written by the agy CLI in WAL mode. A plain
-        // SQLITE_OPEN_READONLY connection still needs write access to the -shm file to
-        // read WAL data, which we don't want (and may not have); "immutable=1" tells
-        // SQLite to treat the file as a fixed snapshot and skip WAL/locking entirely.
-        guard let escapedPath = url.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
-            return []
+    private static func parseDatabaseUncached(at url: URL, walURL: URL) -> [UsageEvent] {
+        // Finished conversations have an empty (or no) -wal file, so an "immutable=1"
+        // snapshot read sees everything without touching agy's -shm/locking. Only a
+        // conversation with pending WAL data needs a regular read-only connection;
+        // if that cannot be set up, fall back to the snapshot (missing the newest
+        // turns rather than showing nothing).
+        let walSize = (try? FileManager.default.attributesOfItem(atPath: walURL.path))?[.size] as? Int ?? 0
+        if walSize > 0, let events = queryEvents(at: url, immutable: false) {
+            return events
         }
+        return queryEvents(at: url, immutable: true) ?? []
+    }
+
+    /// Returns nil when the database could not be opened or queried at all.
+    private static func queryEvents(at url: URL, immutable: Bool) -> [UsageEvent]? {
         var db: OpaquePointer?
-        guard sqlite3_open_v2(
-            "file:\(escapedPath)?immutable=1",
-            &db,
-            SQLITE_OPEN_READONLY | SQLITE_OPEN_URI,
-            nil
-        ) == SQLITE_OK, let db else {
+        let openPath: String
+        var flags = SQLITE_OPEN_READONLY
+        if immutable {
+            guard let escapedPath = url.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
+                return nil
+            }
+            openPath = "file:\(escapedPath)?immutable=1"
+            flags |= SQLITE_OPEN_URI
+        } else {
+            openPath = url.path
+        }
+        guard sqlite3_open_v2(openPath, &db, flags, nil) == SQLITE_OK, let db else {
             sqlite3_close(db)
-            return []
+            return nil
         }
         defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 1000)
 
-        let genMeta = readBlobs(db: db, sql: "SELECT idx, data FROM gen_metadata")
+        guard let genMeta = readBlobs(db: db, sql: "SELECT idx, data FROM gen_metadata") else { return nil }
         guard !genMeta.isEmpty else { return [] }
 
-        let stepTimestamps = readStepTimestamps(db: db)
+        // Turns whose own step carries no timestamp take the nearest earlier step's
+        // time (then the earliest step, then the file's creation date). Never "now":
+        // that would re-date old turns into the current hour on every re-parse.
+        let stepTimestamps = readStepTimestamps(db: db).sorted { $0.key < $1.key }
+        let fallbackDate = stepTimestamps.first?.value
+            ?? (try? FileManager.default.attributesOfItem(atPath: url.path))?[.creationDate] as? Date
+            ?? .distantPast
 
         var events: [UsageEvent] = []
         for (idx, blob) in genMeta {
@@ -87,7 +112,7 @@ enum AgyParser {
 
             guard uncachedInput > 0 || cachedInput > 0 || totalOutput > 0 else { continue }
 
-            let date = stepTimestamps[idx] ?? Date()
+            let date = stepTimestamps.last(where: { $0.key <= idx })?.value ?? fallbackDate
             events.append(UsageEvent(
                 tool: .agy,
                 date: date,
@@ -101,10 +126,11 @@ enum AgyParser {
         return events
     }
 
-    private static func readBlobs(db: OpaquePointer, sql: String) -> [(Int, Data)] {
+    /// Returns nil when the statement cannot be prepared (e.g. the WAL index is unreadable).
+    private static func readBlobs(db: OpaquePointer, sql: String) -> [(Int, Data)]? {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return [] }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return nil }
 
         var results: [(Int, Data)] = []
         while sqlite3_step(statement) == SQLITE_ROW {
@@ -121,7 +147,7 @@ enum AgyParser {
     /// Finds the earliest plausible unix timestamp nested anywhere inside a step's
     /// payload, keyed by the step's `idx` (which lines up with `gen_metadata.idx`).
     private static func readStepTimestamps(db: OpaquePointer) -> [Int: Date] {
-        let rows = readBlobs(db: db, sql: "SELECT idx, step_payload FROM steps")
+        let rows = readBlobs(db: db, sql: "SELECT idx, step_payload FROM steps") ?? []
         var result: [Int: Date] = [:]
         for (idx, blob) in rows {
             guard let fields = AgyProtoReader.parse(blob) else { continue }

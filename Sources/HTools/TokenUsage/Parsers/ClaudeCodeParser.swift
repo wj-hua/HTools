@@ -47,10 +47,8 @@ enum ClaudeCodeParser {
 
         var events: [UsageEvent] = []
         var seenMessageIDs = Set<String>()
-        for line in LineReader(handle: handle) {
-            guard line.contains("\"assistant\"") else { continue }
-            guard let data = line.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        for data in LineReader(handle: handle, containing: "\"assistant\"") {
+            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   obj["type"] as? String == "assistant",
                   let message = obj["message"] as? [String: Any],
                   let usage = message["usage"] as? [String: Any]

@@ -535,7 +535,7 @@ final class ADBService {
         }
 
         if device.bridge == .hdc {
-            let result = await runOnDevice(["install", "-r", fileURL.path], device: device)
+            let result = await runOnDevice(["install", "-r", fileURL.path], device: device, timeout: CommandRunner.longTimeout)
             guard hdcCommandSucceeded(result) else {
                 throw ADBBarError.commandFailed(result.combinedText)
             }
@@ -543,7 +543,7 @@ final class ADBService {
         }
 
         let packageName = await packageName(in: fileURL)
-        let result = await runOnDevice(["install", "-r", "-d", fileURL.path], device: device)
+        let result = await runOnDevice(["install", "-r", "-d", fileURL.path], device: device, timeout: CommandRunner.longTimeout)
         guard androidCommandSucceeded(result) else {
             throw ADBBarError.commandFailed(result.combinedText)
         }
@@ -560,11 +560,11 @@ final class ADBService {
         return (adbExecutable, device.serial)
     }
 
-    func runADB(_ arguments: [String]) async -> CommandResult {
+    func runADB(_ arguments: [String], timeout: Duration = CommandRunner.defaultTimeout) async -> CommandResult {
         guard let adbExecutable else {
             return CommandResult(status: -1, stdout: Data(), stderr: Data("未找到 adb".utf8))
         }
-        return await run(arguments, executable: adbExecutable)
+        return await run(arguments, executable: adbExecutable, timeout: timeout)
     }
 
     private func runShell(_ arguments: [String]) async throws {
@@ -760,7 +760,11 @@ final class ADBService {
         return device
     }
 
-    private func runOnDevice(_ arguments: [String], device: ADBDevice) async -> CommandResult {
+    private func runOnDevice(
+        _ arguments: [String],
+        device: ADBDevice,
+        timeout: Duration = CommandRunner.defaultTimeout
+    ) async -> CommandResult {
         let executable: URL?
         let prefix: [String]
         switch device.bridge {
@@ -778,11 +782,15 @@ final class ADBService {
                 stderr: Data("未找到 \(device.bridge.displayName)".utf8)
             )
         }
-        return await run(prefix + arguments, executable: executable)
+        return await run(prefix + arguments, executable: executable, timeout: timeout)
     }
 
-    private func run(_ arguments: [String], executable: URL) async -> CommandResult {
-        await CommandRunner.run(executable: executable, arguments: arguments)
+    private func run(
+        _ arguments: [String],
+        executable: URL,
+        timeout: Duration = CommandRunner.defaultTimeout
+    ) async -> CommandResult {
+        await CommandRunner.run(executable: executable, arguments: arguments, timeout: timeout)
     }
 
     private func androidCommandSucceeded(_ result: CommandResult) -> Bool {

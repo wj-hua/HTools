@@ -41,10 +41,8 @@ enum PiParser {
 
         var events: [UsageEvent] = []
         var seenMessageIDs = Set<String>()
-        for line in LineReader(handle: handle) {
-            guard line.contains("\"usage\"") else { continue }
-            guard let data = line.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        for data in LineReader(handle: handle, containing: "\"usage\"") {
+            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   obj["type"] as? String == "message",
                   let message = obj["message"] as? [String: Any],
                   message["role"] as? String == "assistant",

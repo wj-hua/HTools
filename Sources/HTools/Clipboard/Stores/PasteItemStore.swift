@@ -189,7 +189,9 @@ final class PasteItemStore: ObservableObject {
 
             normalizeInMemory()
         } catch {
-            // A corrupt or incompatible file should not prevent the app from launching.
+            // A corrupt or incompatible file should not prevent the app from launching,
+            // but keep a copy so the next save does not overwrite the user's data.
+            fileManager.backUpUnreadableFile(at: fileURL)
             tags = [PasteTag.defaultTag]
             items = []
         }

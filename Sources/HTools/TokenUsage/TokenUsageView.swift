@@ -56,10 +56,16 @@ struct TokenUsageView: View {
                 .keyboardShortcut("r", modifiers: .command)
             }
         }
+        // 页面可见且 App 在前台时，数据超过 1 分钟就自动重新扫描；
+        // 未变化的日志文件走缓存，只解析新增内容。
         .task {
-            if store.lastRefreshed == nil, !store.isRefreshing {
-                store.refresh()
+            while !Task.isCancelled {
+                if NSApp.isActive { store.refreshIfStale() }
+                try? await Task.sleep(for: .seconds(30))
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            store.refreshIfStale()
         }
     }
 

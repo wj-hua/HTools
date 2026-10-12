@@ -9,18 +9,17 @@ final class UsageStore: ObservableObject {
     @Published var availableTools: Set<Tool> = []
     @Published private(set) var bucketsByGranularity: [Granularity: [UsageBucket]] = [:]
 
-    private var refreshTask: Task<Void, Never>?
-
     func buckets(for granularity: Granularity) -> [UsageBucket] {
         bucketsByGranularity[granularity] ?? []
     }
 
+    /// A scan already in progress is not restarted: the detached parsing work cannot
+    /// be cancelled anyway, and its result is at most a few seconds old.
     func refresh() {
-        refreshTask?.cancel()
+        guard !isRefreshing else { return }
         isRefreshing = true
-        refreshTask = Task {
+        Task {
             let (resultEvents, resultTools, resultBuckets) = await Self.loadAllData()
-            guard !Task.isCancelled else { return }
             self.events = resultEvents
             self.availableTools = resultTools
             self.bucketsByGranularity = resultBuckets
@@ -32,6 +31,13 @@ final class UsageStore: ObservableObject {
         }
     }
 
+    /// Refreshes only when the data is older than `maxAge`. Cheap to call often:
+    /// unchanged files are served from `UsageFileCache`.
+    func refreshIfStale(maxAge: TimeInterval = 60) {
+        if let lastRefreshed, Date().timeIntervalSince(lastRefreshed) < maxAge { return }
+        refresh()
+    }
+
     private static func loadAllData() async -> (events: [UsageEvent], tools: Set<Tool>, buckets: [Granularity: [UsageBucket]]) {
         await Task.detached(priority: .userInitiated) {
             var all: [UsageEvent] = []
@@ -41,6 +47,7 @@ final class UsageStore: ObservableObject {
             all.append(contentsOf: PiParser.parseAll())
             all.append(contentsOf: ZCodeParser.parseAll())
             all.append(contentsOf: StepCodeParser.parseAll())
+            UsageFileCache.shared.save()
 
             // StepCode forks copy a branch's entries into a second session file, so the
             // same request can arrive twice. Drop the repeats before bucketing.

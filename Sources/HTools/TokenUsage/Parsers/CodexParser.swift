@@ -47,10 +47,8 @@ enum CodexParser {
         defer { try? handle.close() }
 
         var events: [UsageEvent] = []
-        for line in LineReader(handle: handle) {
-            guard line.contains("\"token_count\"") else { continue }
-            guard let data = line.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        for data in LineReader(handle: handle, containing: "\"token_count\"") {
+            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   obj["type"] as? String == "event_msg",
                   let payload = obj["payload"] as? [String: Any],
                   payload["type"] as? String == "token_count",

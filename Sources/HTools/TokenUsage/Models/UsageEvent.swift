@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single token-consuming turn from one of the tracked tools.
-struct UsageEvent {
+struct UsageEvent: Codable {
     let tool: Tool
     let date: Date
     let inputTokens: Int
