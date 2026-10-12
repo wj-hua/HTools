@@ -3,16 +3,13 @@ import SwiftUI
 struct UsageHelpBubble: View {
     let doubleClickAction: ClipboardViewModel.DoubleClickAction
 
+    /// 气泡浮在面板材质之上，用不透明的控件背景，避免两层半透明叠在一起看不清。
+    private let surface = Color(nsColor: .controlBackgroundColor)
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "keyboard")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(ClipboardTheme.accent)
-                Text("快捷键与使用技巧")
-                    .font(.system(size: 12.5, weight: .bold, design: .default))
-                    .foregroundStyle(ClipboardTheme.ink)
-            }
+            Label("快捷键与使用技巧", systemImage: "keyboard")
+                .font(.system(size: 12.5, weight: .semibold))
 
             VStack(alignment: .leading, spacing: 6) {
                 KeycapRow(keys: ["⌥", "空格"], desc: "快速显示 / 隐藏面板")
@@ -32,27 +29,18 @@ struct UsageHelpBubble: View {
         }
         .padding(14)
         .frame(width: 260, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.96))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [Color.white, Color.black.opacity(0.08)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 1
-                        )
-                }
-                .shadow(color: Color.black.opacity(0.14), radius: 18, y: 8)
+        .background(surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
         }
+        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+        // 小三角指向右下角的“使用说明”按钮。
         .overlay(alignment: .bottomTrailing) {
             Image(systemName: "arrowtriangle.down.fill")
                 .font(.system(size: 12))
-                .foregroundStyle(Color.white.opacity(0.96))
-                .offset(x: -48, y: 8)
+                .foregroundStyle(surface)
+                .offset(x: -8, y: 8)
         }
     }
 }
@@ -65,27 +53,14 @@ struct KeycapRow: View {
         HStack(alignment: .center, spacing: 8) {
             HStack(spacing: 2.5) {
                 ForEach(keys, id: \.self) { key in
-                    Text(key)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(ClipboardTheme.ink)
-                        .padding(.horizontal, 4.5)
-                        .padding(.vertical, 2)
-                        .background {
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.white)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .stroke(Color.black.opacity(0.12), lineWidth: 0.8)
-                                }
-                                .shadow(color: Color.black.opacity(0.08), radius: 1, y: 1)
-                        }
+                    Keycap(key)
                 }
             }
             .frame(width: 72, alignment: .leading)
 
             Text(desc)
-                .font(.system(size: 11.5, weight: .medium, design: .default))
-                .foregroundStyle(ClipboardTheme.inkSecondary)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(.secondary)
         }
     }
 }

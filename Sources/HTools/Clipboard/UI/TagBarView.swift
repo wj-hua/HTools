@@ -11,7 +11,7 @@ struct TagBarView: View {
     @State private var targetedTagID: UUID?
 
     var body: some View {
-        // 单行横向滚动会把标签裁掉，而列表模式下滚轮已被面板用于切换选中项，
+        // 单行横向滚动会把标签裁掉，而列表模式下横向滚动已被面板用于切换标签，
         // 那条 ScrollView 实际滚不动，所以这里改为按行铺开、全部展示。
         VStack(alignment: .leading, spacing: TagBarMetrics.rowSpacing) {
             ForEach(Array(TagBarMetrics.rows(for: viewModel.tags).enumerated()), id: \.offset) { _, row in
@@ -60,15 +60,6 @@ struct TagBarView: View {
         }
         .frame(height: TagBarMetrics.barHeight(for: viewModel.tags))
         .padding(.horizontal, TagBarMetrics.horizontalPadding)
-        .background {
-            Rectangle()
-                .fill(Color.white.opacity(0.24))
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(Color.black.opacity(0.05))
-                        .frame(height: 0.8)
-                }
-        }
         // 整条标签栏都让给标签自己的长按拖动排序，窗口拖动不在这里接管。
         .excludedFromWindowDrag()
     }
@@ -77,30 +68,14 @@ struct TagBarView: View {
         Button {
             onAddTag()
         } label: {
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.60))
-                    .overlay {
-                        Circle()
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color.white, Color.black.opacity(0.08)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.8
-                            )
-                    }
-                    .shadow(color: Color.black.opacity(0.02), radius: 2, y: 1)
-
-                Image(systemName: "plus")
-                    .font(.system(size: 11.5, weight: .bold))
-                    .foregroundStyle(ClipboardTheme.accentDeep)
-            }
-            .frame(width: TagBarMetrics.addButtonSize, height: TagBarMetrics.addButtonSize)
-            .contentShape(Circle())
+            Image(systemName: "plus")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: TagBarMetrics.addButtonSize, height: TagBarMetrics.addButtonSize)
+                .background(.quaternary, in: Circle())
+                .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(scale: 0.92))
         .help("添加标签")
     }
 }
@@ -113,6 +88,9 @@ struct TagChipView: View {
     let onRename: () -> Void
     let onDelete: () -> Void
     @Binding var draggedTagID: UUID?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var isHighlighted: Bool { isSelected || isDropTarget }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -127,11 +105,7 @@ struct TagChipView: View {
                         .font(.system(size: TagBarMetrics.chipTextSize, weight: .semibold, design: .default))
                         .lineLimit(1)
                 }
-                .foregroundStyle(
-                    isDropTarget
-                        ? ClipboardTheme.accentDeep
-                        : (isSelected ? ClipboardTheme.accentDeep : ClipboardTheme.ink.opacity(0.80))
-                )
+                .foregroundStyle(isHighlighted ? Color.accentColor : Color.primary)
                 .padding(.leading, TagBarMetrics.chipLeadingPadding)
                 .padding(.trailing, tag.isDefault ? TagBarMetrics.chipLeadingPadding : TagBarMetrics.chipTrailingPadding)
                 .frame(height: TagBarMetrics.chipHeight)
@@ -146,11 +120,7 @@ struct TagChipView: View {
 
             if !tag.isDefault {
                 Rectangle()
-                    .fill(
-                        isDropTarget
-                            ? ClipboardTheme.accent.opacity(0.35)
-                            : (isSelected ? ClipboardTheme.accent.opacity(0.25) : Color.black.opacity(0.08))
-                    )
+                    .fill(isHighlighted ? Color.accentColor.opacity(0.3) : Color(nsColor: .separatorColor))
                     .frame(width: TagBarMetrics.chipDividerWidth, height: 14)
 
                 Button {
@@ -162,77 +132,24 @@ struct TagChipView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(
-                    isDropTarget
-                        ? ClipboardTheme.accentDeep
-                        : (isSelected ? ClipboardTheme.accentDeep.opacity(0.80) : ClipboardTheme.inkTertiary)
-                )
+                .foregroundStyle(isHighlighted ? Color.accentColor : PanelStyle.tertiaryText)
                 .help("删除标签")
             }
         }
-        .background {
-            Capsule()
-                .fill(
-                    isDropTarget
-                        ? AnyShapeStyle(
-                            LinearGradient(
-                                colors: [
-                                    ClipboardTheme.accent.opacity(0.32),
-                                    ClipboardTheme.accent.opacity(0.18)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        : (isSelected
-                            ? AnyShapeStyle(
-                                LinearGradient(
-                                    colors: [
-                                        ClipboardTheme.accent.opacity(0.20),
-                                        ClipboardTheme.accent.opacity(0.10)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            : AnyShapeStyle(Color.white.opacity(0.55)))
-                )
-                .overlay {
-                    Capsule()
-                        .stroke(
-                            isDropTarget
-                                ? AnyShapeStyle(ClipboardTheme.accent)
-                                : (isSelected
-                                    ? AnyShapeStyle(
-                                        LinearGradient(
-                                            colors: [
-                                                Color.white,
-                                                ClipboardTheme.accent.opacity(0.45)
-                                            ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    : AnyShapeStyle(
-                                        LinearGradient(
-                                            colors: [Color.white.opacity(0.9), Color.black.opacity(0.06)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        )
-                                    )),
-                            lineWidth: isDropTarget ? 1.5 : 0.8
-                        )
-                }
-                .shadow(
-                    color: isDropTarget
-                        ? ClipboardTheme.accent.opacity(0.35)
-                        : (isSelected ? ClipboardTheme.accent.opacity(0.12) : Color.black.opacity(0.02)),
-                    radius: isDropTarget ? 6 : 2,
-                    y: isDropTarget ? 2 : 1
-                )
+        .background(
+            isDropTarget
+                ? AnyShapeStyle(Color.accentColor.opacity(0.26))
+                : (isSelected ? AnyShapeStyle(Color.accentColor.opacity(0.15)) : AnyShapeStyle(.quaternary)),
+            in: Capsule()
+        )
+        .overlay {
+            if isDropTarget {
+                Capsule().strokeBorder(Color.accentColor, lineWidth: 1.5)
+            }
         }
-        .scaleEffect(isDropTarget ? 1.05 : 1.0)
-        .animation(.snappy(duration: 0.18), value: isDropTarget)
+        // 拖入文本时轻微放大，提示可以松手；减弱动态效果时只保留颜色变化。
+        .scaleEffect(isDropTarget && !reduceMotion ? 1.05 : 1.0)
+        .animation(PanelStyle.animation(Motion.snappy, reduceMotion: reduceMotion), value: isDropTarget)
         .contentShape(Capsule())
         .contextMenu {
             Button("重命名标签") {

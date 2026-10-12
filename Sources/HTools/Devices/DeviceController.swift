@@ -35,6 +35,12 @@ final class DeviceController: ObservableObject {
 
     private var qrPairingTask: Task<Void, Never>?
     private var pollingTask: Task<Void, Never>?
+    private var pollingInterval: Duration?
+
+    /// 页面可见时每 3 秒刷新设备列表，插拔数据线无需手动刷新；
+    /// 离开页面后降到 30 秒一次，只为让侧边栏角标保持大致准确。
+    static let foregroundPollInterval: Duration = .seconds(3)
+    static let backgroundPollInterval: Duration = .seconds(30)
 
     init() {
         do {
@@ -54,7 +60,7 @@ final class DeviceController: ObservableObject {
         )
         .dropFirst()
         .sink { [weak self] in self?.objectWillChange.send() }
-        Task { await refreshDevices() }
+        startPolling(interval: Self.backgroundPollInterval)
     }
 
     var isBusy: Bool { busyMessage != nil }
@@ -72,22 +78,21 @@ final class DeviceController: ObservableObject {
 
     // MARK: - 设备列表
 
-    /// 页面可见时每 3 秒刷新一次设备列表，插拔数据线无需手动刷新。
-    func startPolling() {
-        guard pollingTask == nil else { return }
+    /// 以指定间隔轮询；已在以相同间隔轮询时不重复启动。切到前台间隔时
+    /// 顺带刷新前台应用、设备信息等详情。
+    func startPolling(interval: Duration) {
+        guard pollingInterval != interval else { return }
+        pollingInterval = interval
+        pollingTask?.cancel()
+        let includeDetails = interval == Self.foregroundPollInterval
         pollingTask = Task { [weak self] in
-            await self?.refreshDevices(includeDetails: true)
+            await self?.refreshDevices(includeDetails: includeDetails)
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
+                try? await Task.sleep(for: interval)
                 guard let self, !Task.isCancelled else { break }
                 if !self.isBusy { await self.refreshDevices() }
             }
         }
-    }
-
-    func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
     }
 
     func refreshDevices(includeDetails: Bool = false) async {

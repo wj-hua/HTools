@@ -7,6 +7,7 @@ final class PasteItemStore: ObservableObject {
 
     let fileURL: URL
     private let fileManager: FileManager
+    private var pendingSave: DispatchWorkItem?
 
     init(fileURL: URL? = nil, fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -150,10 +151,6 @@ final class PasteItemStore: ObservableObject {
             .map(\.element)
     }
 
-    func reload() {
-        load()
-    }
-
     static func isValidText(_ text: String) -> Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -199,6 +196,25 @@ final class PasteItemStore: ObservableObject {
 
     private func normalizeAndSave() {
         normalizeInMemory()
+        scheduleSave()
+    }
+
+    /// Edits arrive once per keystroke; coalesce them into one write 0.5s after
+    /// the last change. `flushPendingSave()` writes immediately (e.g. on quit).
+    private func scheduleSave() {
+        pendingSave?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.pendingSave = nil
+            self?.save()
+        }
+        pendingSave = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    func flushPendingSave() {
+        guard let pendingSave else { return }
+        pendingSave.cancel()
+        self.pendingSave = nil
         save()
     }
 

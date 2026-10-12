@@ -75,120 +75,65 @@ struct WindowDragRecognizer {
     }
 }
 
-/// 把滚轮位移转换成离散的列表/标签选择。
+/// 把横向滚动转换成离散的标签切换。上下滚动不参与，留给列表自己滚动。
 ///
 /// 普通鼠标滚轮的事件会经过限速；触控板和高精度滚轮还会先累计位移，达到阈值后
-/// 再移动。无论设备一次发出多少事件或多大的位移，每个时间窗口最多只移动一步。
+/// 再切换。无论设备一次发出多少事件或多大的位移，每个时间窗口最多切换一个标签。
 struct ScrollWheelNavigationRecognizer {
-    enum Axis: Equatable {
-        case items
-        case tags
-    }
-
-    struct Navigation: Equatable {
-        let axis: Axis
-        let offset: Int
-    }
-
     static let preciseStepThreshold: CGFloat = 12
     static let minimumStepInterval: TimeInterval = 0.25
 
-    private var lockedGestureAxis: Axis?
-    private var accumulatedAxis: Axis?
     private var accumulatedDelta: CGFloat = 0
     private var lastNavigationTimestamp: TimeInterval?
 
+    /// 返回要切换的标签偏移（-1 或 1）；不需要切换时返回 nil。
     mutating func update(
         horizontalDelta: CGFloat,
-        verticalDelta: CGFloat,
         hasPreciseScrollingDeltas: Bool,
         phase: NSEvent.Phase = [],
         momentumPhase: NSEvent.Phase = [],
         timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime
-    ) -> Navigation? {
-        // 惯性阶段没有新的用户输入，若继续响应会在松手后仍不断改变选择。
+    ) -> Int? {
+        // 惯性阶段没有新的用户输入，若继续响应会在松手后仍不断切换标签。
         guard momentumPhase.isEmpty else {
             if momentumPhase.contains(.ended) || momentumPhase.contains(.cancelled) {
-                resetGestureState()
+                accumulatedDelta = 0
             }
             return nil
         }
 
         if phase.contains(.began) || phase.contains(.mayBegin) {
-            resetGestureState()
-        }
-
-        if phase.contains(.ended) || phase.contains(.cancelled) {
-            resetGestureState()
-            return nil
-        }
-
-        guard let dominantAxis = dominantAxis(
-            horizontalDelta: horizontalDelta,
-            verticalDelta: verticalDelta
-        ) else {
-            return nil
-        }
-
-        guard hasPreciseScrollingDeltas else {
-            resetGestureState()
-            guard shouldEmitNavigation(at: timestamp) else { return nil }
-            return Navigation(
-                axis: dominantAxis,
-                offset: offset(
-                    for: delta(
-                        along: dominantAxis,
-                        horizontalDelta: horizontalDelta,
-                        verticalDelta: verticalDelta
-                    ),
-                    along: dominantAxis
-                )
-            )
-        }
-
-        let axis: Axis
-        if let lockedGestureAxis {
-            axis = lockedGestureAxis
-        } else {
-            axis = dominantAxis
-            // 只有带 phase 的连续手势才锁定方向。部分高精度鼠标不提供 phase，
-            // 它们仍可以在相邻事件之间自由切换横向和纵向滚动。
-            if !phase.isEmpty {
-                lockedGestureAxis = axis
-            }
-        }
-
-        if accumulatedAxis != axis {
-            accumulatedAxis = axis
             accumulatedDelta = 0
         }
 
-        accumulatedDelta += delta(
-            along: axis,
-            horizontalDelta: horizontalDelta,
-            verticalDelta: verticalDelta
-        )
+        if phase.contains(.ended) || phase.contains(.cancelled) {
+            accumulatedDelta = 0
+            return nil
+        }
 
+        guard horizontalDelta != 0 else { return nil }
+
+        guard hasPreciseScrollingDeltas else {
+            accumulatedDelta = 0
+            guard shouldEmitNavigation(at: timestamp) else { return nil }
+            return horizontalDelta > 0 ? 1 : -1
+        }
+
+        accumulatedDelta += horizontalDelta
         let stepCount = Int(abs(accumulatedDelta) / Self.preciseStepThreshold)
         guard stepCount > 0 else { return nil }
 
-        let direction = offset(for: accumulatedDelta, along: axis)
-        accumulatedDelta -= CGFloat(-direction * stepCount) * Self.preciseStepThreshold
+        let direction = accumulatedDelta > 0 ? 1 : -1
+        accumulatedDelta -= CGFloat(direction * stepCount) * Self.preciseStepThreshold
         guard shouldEmitNavigation(at: timestamp) else { return nil }
 
         // 大位移只取一步，多余的整步直接丢弃，避免限速后又补跳。
-        return Navigation(axis: axis, offset: direction)
+        return direction
     }
 
     mutating func reset() {
-        resetGestureState()
-        lastNavigationTimestamp = nil
-    }
-
-    private mutating func resetGestureState() {
-        lockedGestureAxis = nil
-        accumulatedAxis = nil
         accumulatedDelta = 0
+        lastNavigationTimestamp = nil
     }
 
     private mutating func shouldEmitNavigation(at timestamp: TimeInterval) -> Bool {
@@ -208,36 +153,6 @@ struct ScrollWheelNavigationRecognizer {
 
         self.lastNavigationTimestamp = timestamp
         return true
-    }
-
-    private func dominantAxis(
-        horizontalDelta: CGFloat,
-        verticalDelta: CGFloat
-    ) -> Axis? {
-        guard horizontalDelta != 0 || verticalDelta != 0 else { return nil }
-        return abs(horizontalDelta) > abs(verticalDelta) ? .tags : .items
-    }
-
-    private func delta(
-        along axis: Axis,
-        horizontalDelta: CGFloat,
-        verticalDelta: CGFloat
-    ) -> CGFloat {
-        switch axis {
-        case .items:
-            return verticalDelta
-        case .tags:
-            return horizontalDelta
-        }
-    }
-
-    private func offset(for delta: CGFloat, along axis: Axis) -> Int {
-        switch axis {
-        case .items:
-            return delta > 0 ? -1 : 1
-        case .tags:
-            return delta > 0 ? 1 : -1
-        }
     }
 }
 
@@ -269,7 +184,6 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         super.init()
 
-        panel.appearance = NSAppearance(named: .aqua)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.ignoresMouseEvents = false
@@ -555,28 +469,20 @@ final class PanelController: NSObject, NSWindowDelegate {
             verticalDelta = 0
         }
 
-        let hasScrollingDelta = horizontalDelta != 0 || verticalDelta != 0
-        let hasScrollingPhase = !event.phase.isEmpty || !event.momentumPhase.isEmpty
-        guard hasScrollingDelta || hasScrollingPhase else { return false }
-
-        if let navigation = scrollWheelNavigationRecognizer.update(
-            horizontalDelta: horizontalDelta,
-            verticalDelta: verticalDelta,
+        let isHorizontal = abs(horizontalDelta) > abs(verticalDelta)
+        let offset = scrollWheelNavigationRecognizer.update(
+            horizontalDelta: isHorizontal ? horizontalDelta : 0,
             hasPreciseScrollingDeltas: event.hasPreciseScrollingDeltas,
             phase: event.phase,
             momentumPhase: event.momentumPhase,
             timestamp: event.timestamp
-        ) {
-            switch navigation.axis {
-            case .items:
-                viewModel.moveSelection(by: navigation.offset)
-            case .tags:
-                viewModel.moveTagSelection(by: navigation.offset)
-            }
+        )
+        if let offset {
+            viewModel.moveTagSelection(by: offset)
         }
 
-        // 列表模式下滚轮用于改变选择；吞掉原事件，避免 List/标签 ScrollView 同时滚动。
-        return true
+        // 只吞掉横向滚动；上下滚动和只带手势阶段的事件照常交给列表，保证列表能正常滚动和回弹。
+        return isHorizontal
     }
 
     private func handleListShortcut(_ event: NSEvent) -> Bool {

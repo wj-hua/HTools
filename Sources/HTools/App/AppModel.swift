@@ -40,7 +40,7 @@ final class AppModel: ObservableObject {
 
         refreshAccessibilityStatus()
         usageStore.refresh()
-        processMonitor.refresh()
+        processMonitor.startMonitoring(interval: ProcessMonitor.backgroundInterval)
     }
 
     func showQuickPastePanel() {

@@ -11,8 +11,12 @@ final class ProcessMonitor: ObservableObject {
     @Published var isScanning: Bool = false
     @Published var lastUpdated: Date?
 
+    /// 页面可见时 3 秒刷新；离开页面后降到 30 秒一次，只为让侧边栏角标保持大致准确。
+    static let foregroundInterval: TimeInterval = 3
+    static let backgroundInterval: TimeInterval = 30
+
     private var monitorTask: Task<Void, Never>?
-    private var isMonitoring: Bool = false
+    private var monitorInterval: TimeInterval?
 
     init() {
         // Initialize with empty summaries for all tools
@@ -23,9 +27,10 @@ final class ProcessMonitor: ObservableObject {
         self.summaries = initial
     }
 
-    func startMonitoring(interval: TimeInterval = 3.0) {
-        guard !isMonitoring else { return }
-        isMonitoring = true
+    /// 以指定间隔轮询；已在以相同间隔轮询时不重复启动，换间隔时立即刷新一次。
+    func startMonitoring(interval: TimeInterval) {
+        guard monitorInterval != interval else { return }
+        monitorInterval = interval
         monitorTask?.cancel()
         monitorTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -34,12 +39,6 @@ final class ProcessMonitor: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             }
         }
-    }
-
-    func stopMonitoring() {
-        isMonitoring = false
-        monitorTask?.cancel()
-        monitorTask = nil
     }
 
     func refresh() {

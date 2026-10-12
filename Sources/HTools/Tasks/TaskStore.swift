@@ -35,6 +35,7 @@ final class TaskStore: ObservableObject {
 
     let fileURL: URL
     private let fileManager: FileManager
+    private var pendingSave: DispatchWorkItem?
 
     init(fileURL: URL? = nil, fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -135,6 +136,25 @@ final class TaskStore: ObservableObject {
 
     private func normalizeAndSave() {
         normalizeInMemory()
+        scheduleSave()
+    }
+
+    /// 编辑标题、备注时每敲一个字都会修改一次；合并为最后一次修改 0.5 秒后写一次盘。
+    /// 退出前用 `flushPendingSave()` 立即写入。
+    private func scheduleSave() {
+        pendingSave?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.pendingSave = nil
+            self?.save()
+        }
+        pendingSave = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    func flushPendingSave() {
+        guard let pendingSave else { return }
+        pendingSave.cancel()
+        self.pendingSave = nil
         save()
     }
 

@@ -46,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        model.pasteStore.flushPendingSave()
+        model.taskStore.flushPendingSave()
         model.devices.stopMirroring()
     }
 }

@@ -5,90 +5,33 @@ struct AccessibilityPermissionView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.14))
-                    .frame(width: 58, height: 58)
-                    .overlay {
-                        Circle()
-                            .stroke(Color.orange.opacity(0.25), lineWidth: 1)
-                    }
-
-                Image(systemName: "hand.raised.fill")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.orange)
-            }
+            IconTile(systemImage: "hand.raised.fill", tint: .orange, size: 56)
 
             VStack(spacing: 6) {
                 Text("需要辅助功能权限")
-                    .font(.system(size: 16, weight: .bold, design: .default))
-                    .foregroundStyle(ClipboardTheme.ink)
+                    .font(.system(size: 16, weight: .bold))
 
                 Text("为了把常用文本自动粘贴到当前应用，请在系统设置的“隐私与安全性 > 辅助功能”中允许当前版本的常用粘贴板控制电脑。")
-                    .font(.system(size: 12.5, weight: .regular, design: .default))
+                    .font(.system(size: 12.5))
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(ClipboardTheme.inkSecondary)
+                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 10) {
-                Button {
+                Button("稍后") {
                     viewModel.dismissPermissionNotice()
-                } label: {
-                    Text("稍后")
-                        .font(.system(size: 13, weight: .medium, design: .default))
-                        .foregroundStyle(ClipboardTheme.ink)
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.white.opacity(0.60))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .stroke(Color.black.opacity(0.08), lineWidth: 0.8)
-                                }
-                        }
                 }
-                .buttonStyle(.plain)
 
-                Button {
+                Button("我已授权，重新检查") {
                     viewModel.refreshAccessibilityPermission()
-                } label: {
-                    Text("我已授权，重新检查")
-                        .font(.system(size: 13, weight: .medium, design: .default))
-                        .foregroundStyle(ClipboardTheme.ink)
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.white.opacity(0.60))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .stroke(Color.black.opacity(0.08), lineWidth: 0.8)
-                                }
-                        }
                 }
-                .buttonStyle(.plain)
 
-                Button {
+                Button("打开系统设置") {
                     viewModel.openAccessibilitySettings()
-                } label: {
-                    Text("打开系统设置")
-                        .font(.system(size: 13, weight: .semibold, design: .default))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 14)
-                        .frame(height: 32)
-                        .background {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(ClipboardTheme.accentGradient)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .stroke(Color.white.opacity(0.28), lineWidth: 0.8)
-                                }
-                                .shadow(color: ClipboardTheme.accent.opacity(0.30), radius: 4, y: 2)
-                        }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
             }
+            .controlSize(.large)
         }
         .padding(26)
         .background(.regularMaterial)

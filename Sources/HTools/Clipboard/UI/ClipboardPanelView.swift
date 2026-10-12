@@ -20,6 +20,7 @@ struct ClipboardPanelView: View {
     @State private var isTextEditorComposing = false
     @State private var isUsageHelpPresented = false
     @FocusState private var isSearchFieldFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let panelCornerRadius: CGFloat = 24
 
@@ -99,19 +100,17 @@ struct ClipboardPanelView: View {
     }
 
     var body: some View {
-        ZStack {
-            panelBackdrop
-
-            Group {
-                switch viewModel.mode {
-                case .list:
-                    listView
-                case .editor:
-                    editorView
-                }
+        Group {
+            switch viewModel.mode {
+            case .list:
+                listView
+            case .editor:
+                editorView
             }
         }
         .frame(width: Self.panelWidth, height: panelHeight)
+        // 只用一层系统材质：跟随浅色 / 深色，不再叠加白色半透明面和装饰光晕。
+        .background(.regularMaterial)
         // The panel itself is the hit-test surface. Empty glass areas must still
         // receive the mouse event instead of letting it fall through to the app
         // underneath.
@@ -143,25 +142,12 @@ struct ClipboardPanelView: View {
         // 空间里 —— 命名空间只对其后代可见。
         .coordinateSpace(name: Self.panelCoordinateSpace)
         .clipShape(RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))
+        // 投影由 NSPanel 自己绘制（窗口外的 SwiftUI 阴影会被窗口边界裁掉）。
         .overlay {
             RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.95),
-                            Color.white.opacity(0.40),
-                            ClipboardTheme.accent.opacity(0.20),
-                            Color.white.opacity(0.60)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
+                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
                 .allowsHitTesting(false)
         }
-        .shadow(color: Color.black.opacity(0.14), radius: 30, y: 16)
-        .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
         .sheet(isPresented: $viewModel.isShowingPermission) {
             AccessibilityPermissionView(viewModel: viewModel)
                 .frame(width: 430, height: 280)
@@ -274,46 +260,6 @@ struct ClipboardPanelView: View {
         } message: {
             Text("该标签中的文本会移动到“默认”标签，不会被删除。")
         }
-        // 面板保持浅色高透玻璃，质感纯净通透。
-        .environment(\.colorScheme, .light)
-    }
-
-    private var panelBackdrop: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color.white.opacity(0.82))
-
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .opacity(0.92)
-
-            // 极简温润的高级光晕微渐变，替代原先生硬的水波纹
-            LinearGradient(
-                colors: [
-                    ClipboardTheme.accentSoft.opacity(0.65),
-                    Color.white.opacity(0.20),
-                    Color(red: 0.92, green: 0.95, blue: 0.98).opacity(0.55)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            // 左上角冷萃翡翠微光
-            Circle()
-                .fill(ClipboardTheme.accent.opacity(0.12))
-                .frame(width: 260, height: 260)
-                .blur(radius: 70)
-                .offset(x: -150, y: -160)
-
-            // 右下角冰川钛光
-            Circle()
-                .fill(Color(red: 0.35, green: 0.65, blue: 0.90).opacity(0.10))
-                .frame(width: 240, height: 240)
-                .blur(radius: 70)
-                .offset(x: 170, y: 160)
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
     }
 
     private var listView: some View {
@@ -332,6 +278,8 @@ struct ClipboardPanelView: View {
                 )
             }
 
+            Divider()
+
             if viewModel.visibleItems.isEmpty, viewModel.hasSearchQuery {
                 searchEmptyState
             } else if viewModel.visibleItems.isEmpty {
@@ -339,6 +287,8 @@ struct ClipboardPanelView: View {
             } else {
                 listContent
             }
+
+            Divider()
 
             footer
         }
@@ -349,7 +299,7 @@ struct ClipboardPanelView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(ClipboardTheme.accent.opacity(0.85))
+                    .foregroundStyle(.secondary)
 
                 TextField("搜索文本...", text: $viewModel.searchText)
                     .textFieldStyle(.plain)
@@ -368,107 +318,30 @@ struct ClipboardPanelView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(ClipboardTheme.inkTertiary)
+                            .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
                     .help("清空搜索")
                 } else {
-                    Text("⌘F")
-                        .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(ClipboardTheme.inkTertiary.opacity(0.75))
-                        .padding(.horizontal, 4.5)
-                        .padding(.vertical, 1.5)
-                        .background {
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.black.opacity(0.04))
-                        }
+                    Keycap("⌘F")
                 }
             }
             .padding(.horizontal, 10)
-            .frame(height: 32)
-            .background {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color.white.opacity(0.75))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.95),
-                                        Color.black.opacity(0.07)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.8
-                            )
-                    }
-                    .shadow(color: Color.black.opacity(0.02), radius: 3, y: 1)
-            }
+            .frame(height: 30)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            // 自研无缝融合的范围切换胶囊，消除系统默认突兀的亮蓝色
-            HStack(spacing: 2) {
-                scopeTabButton(title: "当前标签", scope: .currentTag)
-                scopeTabButton(title: "全部", scope: .allTags)
+            Picker("搜索范围", selection: $viewModel.searchScope) {
+                Text("当前标签").tag(ClipboardViewModel.SearchScope.currentTag)
+                Text("全部").tag(ClipboardViewModel.SearchScope.allTags)
             }
-            .padding(2.5)
-            .frame(width: 142, height: 32)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.black.opacity(0.045))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.black.opacity(0.05), lineWidth: 0.5)
-                    }
-            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
             .help("选择搜索当前标签或全部标签")
         }
         .frame(height: Self.searchBarHeight)
         .padding(.horizontal, 18)
-        .background {
-            Rectangle()
-                .fill(Color.white.opacity(0.20))
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(Color.black.opacity(0.05))
-                        .frame(height: 0.8)
-                }
-        }
         .excludedFromWindowDrag()
-    }
-
-    private func scopeTabButton(title: String, scope: ClipboardViewModel.SearchScope) -> some View {
-        let isSelected = viewModel.searchScope == scope
-        return Button {
-            withAnimation(.snappy(duration: 0.2)) {
-                viewModel.searchScope = scope
-            }
-        } label: {
-            Text(title)
-                .font(.system(size: 11.5, weight: isSelected ? .semibold : .medium, design: .default))
-                .foregroundStyle(isSelected ? ClipboardTheme.ink : ClipboardTheme.inkSecondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.white)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [Color.white, Color.black.opacity(0.06)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        ),
-                                        lineWidth: 0.8
-                                    )
-                            }
-                            .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     private func beginAddingTag() {
@@ -572,7 +445,7 @@ struct ClipboardPanelView: View {
             .onChange(of: viewModel.selectedItemID) { _, selectedItemID in
                 guard let selectedItemID else { return }
 
-                withAnimation(.snappy(duration: 0.22)) {
+                withAnimation(PanelStyle.animation(Motion.snappy, reduceMotion: reduceMotion)) {
                     scrollProxy.scrollTo(selectedItemID, anchor: .center)
                 }
             }
@@ -583,49 +456,30 @@ struct ClipboardPanelView: View {
 
     private var footer: some View {
         HStack(spacing: 8) {
-            // 主操作按钮：翡翠质感渐变与微反光
             Button {
                 viewModel.beginAdding()
             } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11.5, weight: .bold))
-                    Text("添加")
-                        .font(.system(size: 13, weight: .semibold, design: .default))
-                }
-                .foregroundStyle(Color.white)
-                .padding(.horizontal, 14)
-                .frame(height: 32)
-                .background {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(ClipboardTheme.accentGradient)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.white.opacity(0.28), lineWidth: 0.8)
-                        }
-                        .shadow(color: ClipboardTheme.accent.opacity(0.35), radius: 4, y: 2)
-                }
-                .contentShape(Rectangle())
+                Label("添加", systemImage: "plus")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut("n", modifiers: [.command])
             .excludedFromWindowDrag()
 
-            controlButton(
-                title: "编辑",
-                systemImage: "square.and.pencil",
-                isDisabled: viewModel.selectedItemID == nil
-            ) {
+            Button {
                 viewModel.beginEditingSelectedItem()
+            } label: {
+                Label("编辑", systemImage: "square.and.pencil")
             }
+            .disabled(viewModel.selectedItemID == nil)
+            .excludedFromWindowDrag()
 
-            controlButton(
-                title: "删除",
-                systemImage: "trash",
-                isDisabled: viewModel.selectedItemID == nil
-            ) {
+            Button {
                 isDeleteConfirmationPresented = true
+            } label: {
+                Label("删除", systemImage: "trash")
             }
+            .disabled(viewModel.selectedItemID == nil)
+            .excludedFromWindowDrag()
 
             Spacer(minLength: 8)
 
@@ -635,27 +489,9 @@ struct ClipboardPanelView: View {
                     Text("仅复制").tag(ClipboardViewModel.DoubleClickAction.copy)
                 }
             } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(ClipboardTheme.inkSecondary)
-                    .frame(width: 32, height: 32)
-                    .background {
-                        Circle()
-                            .fill(Color.white.opacity(0.55))
-                            .overlay {
-                                Circle()
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [Color.white, Color.black.opacity(0.08)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        ),
-                                        lineWidth: 0.8
-                                    )
-                            }
-                            .shadow(color: Color.black.opacity(0.02), radius: 2, y: 1)
-                    }
-                    .contentShape(Circle())
+                Image(systemName: "gearshape")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -665,220 +501,72 @@ struct ClipboardPanelView: View {
             .excludedFromWindowDrag()
 
             Button {
-                withAnimation(.easeOut(duration: 0.16)) {
+                withAnimation(PanelStyle.animation(Motion.snappy, reduceMotion: reduceMotion)) {
                     isUsageHelpPresented.toggle()
                 }
             } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "questionmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(ClipboardTheme.accent)
-                    Text("使用说明")
-                        .font(.system(size: 12, weight: .semibold, design: .default))
-                        .foregroundStyle(ClipboardTheme.inkSecondary)
-                }
-                .padding(.horizontal, 11)
-                .frame(height: 32)
-                .background {
-                    Capsule()
-                        .fill(Color.white.opacity(0.55))
-                        .overlay {
-                            Capsule()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white, Color.black.opacity(0.08)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 0.8
-                                )
-                        }
-                        .shadow(color: Color.black.opacity(0.02), radius: 2, y: 1)
-                }
-                .contentShape(Capsule())
+                // 与左侧的设置菜单保持同样的无底板图标样式。
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle(scale: 0.92))
             .onDisappear {
                 isUsageHelpPresented = false
             }
             .help("查看使用说明")
+            .accessibilityLabel("使用说明")
             .accessibilityHint("显示常用粘贴板的操作说明")
             .excludedFromWindowDrag()
         }
+        .controlSize(.large)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background {
-            Rectangle()
-                .fill(Color.white.opacity(0.35))
-                .overlay(alignment: .top) {
-                    Rectangle()
-                        .fill(Color.black.opacity(0.06))
-                        .frame(height: 0.8)
-                }
-        }
         .overlay(alignment: .bottomTrailing) {
             if isUsageHelpPresented {
+                // 气泡从“使用说明”按钮的位置长出，收起时原路缩回。
                 UsageHelpBubble(doubleClickAction: viewModel.doubleClickAction)
                     .padding(.trailing, 16)
-                    .offset(y: -46)
+                    .offset(y: -50)
                     .transition(
-                        .opacity.combined(
-                            with: .scale(scale: 0.96, anchor: .bottomTrailing)
-                        )
+                        reduceMotion
+                            ? .opacity
+                            : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottomTrailing))
                     )
                     .allowsHitTesting(false)
             }
         }
     }
 
-    private func controlButton(
-        title: String,
-        systemImage: String,
-        isDisabled: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 11, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 12.5, weight: .medium, design: .default))
-            }
-            .foregroundStyle(isDisabled ? ClipboardTheme.inkTertiary : ClipboardTheme.ink)
-            .padding(.horizontal, 11)
-            .frame(height: 32)
-            .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(0.55))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color.white, Color.black.opacity(0.08)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.8
-                            )
-                    }
-                    .shadow(color: Color.black.opacity(0.02), radius: 2, y: 1)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.45 : 1)
-        .excludedFromWindowDrag()
-    }
-
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Spacer()
-
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                ClipboardTheme.accent.opacity(0.16),
-                                ClipboardTheme.accent.opacity(0.08)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 64, height: 64)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(ClipboardTheme.accent.opacity(0.25), lineWidth: 1)
-                    }
-
-                Image(systemName: "doc.on.clipboard.fill")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(ClipboardTheme.accentDeep)
-            }
-
-            VStack(spacing: 4) {
-                Text("还没有常用文本")
-                    .font(.system(size: 16, weight: .bold, design: .default))
-                    .foregroundStyle(ClipboardTheme.ink)
-
-                Text("把经常输入的内容存起来，随时一键粘贴")
-                    .font(.system(size: 12.5, weight: .regular, design: .default))
-                    .foregroundStyle(ClipboardTheme.inkSecondary)
-            }
-
-            Button {
+        ContentUnavailableView {
+            Label("还没有常用文本", systemImage: "doc.on.clipboard")
+        } description: {
+            Text("把经常输入的内容存起来，随时一键粘贴")
+        } actions: {
+            Button("添加第一条") {
                 viewModel.beginAdding()
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
-                    Text("添加第一条")
-                        .font(.system(size: 12.5, weight: .semibold, design: .default))
-                }
-                .foregroundStyle(Color.white)
-                .padding(.horizontal, 14)
-                .frame(height: 32)
-                .background {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(ClipboardTheme.accentGradient)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.white.opacity(0.28), lineWidth: 0.8)
-                        }
-                        .shadow(color: ClipboardTheme.accent.opacity(0.30), radius: 4, y: 2)
-                }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderedProminent)
             .excludedFromWindowDrag()
-
-            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minHeight: listAreaHeight)
     }
 
     private var searchEmptyState: some View {
-        VStack(spacing: 12) {
-            Spacer()
-
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(ClipboardTheme.accent.opacity(0.70))
-
-            VStack(spacing: 4) {
-                Text("没有找到匹配文本")
-                    .font(.system(size: 15, weight: .bold, design: .default))
-                    .foregroundStyle(ClipboardTheme.ink)
-
-                Text(viewModel.searchScope == .currentTag ? "可以换个关键词，或搜索全部标签" : "可以换个关键词再试试")
-                    .font(.system(size: 12, weight: .regular, design: .default))
-                    .foregroundStyle(ClipboardTheme.inkSecondary)
-            }
-
-            Button {
+        ContentUnavailableView {
+            Label("没有找到匹配文本", systemImage: "magnifyingglass")
+        } description: {
+            Text(viewModel.searchScope == .currentTag ? "可以换个关键词，或搜索全部标签" : "可以换个关键词再试试")
+        } actions: {
+            Button("清空搜索") {
                 viewModel.clearSearch()
                 viewModel.requestSearchFocus()
-            } label: {
-                Text("清空搜索")
-                    .font(.system(size: 12, weight: .medium, design: .default))
-                    .foregroundStyle(ClipboardTheme.ink)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.white.opacity(0.60))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(Color.black.opacity(0.08), lineWidth: 0.8)
-                            }
-                    }
             }
-            .buttonStyle(.plain)
             .excludedFromWindowDrag()
-
-            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minHeight: listAreaHeight)
@@ -895,55 +583,27 @@ struct ClipboardPanelView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center) {
                     Text("文本内容")
-                        .font(.system(size: 12.5, weight: .bold, design: .default))
-                        .foregroundStyle(ClipboardTheme.ink)
+                        .font(.system(size: 12.5, weight: .semibold))
 
                     Spacer()
 
                     if viewModel.tags.count > 1 {
-                        Menu {
+                        Picker("所属标签", selection: $viewModel.draftTagID) {
                             ForEach(viewModel.tags) { tag in
-                                Button {
-                                    viewModel.draftTagID = tag.id
-                                } label: {
-                                    if viewModel.draftTagID == tag.id {
-                                        Label(tag.name, systemImage: "checkmark")
-                                    } else {
-                                        Text(tag.name)
-                                    }
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "tag.fill")
-                                    .font(.system(size: 9.5))
-                                Text(draftTagName)
-                                    .font(.system(size: 11.5, weight: .semibold, design: .default))
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .foregroundStyle(ClipboardTheme.accentDeep.opacity(0.7))
-                            }
-                            .foregroundStyle(ClipboardTheme.accentDeep)
-                            .padding(.horizontal, 8)
-                            .frame(height: 22)
-                            .background {
-                                Capsule()
-                                    .fill(ClipboardTheme.accent.opacity(0.12))
-                                    .overlay {
-                                        Capsule()
-                                            .stroke(ClipboardTheme.accent.opacity(0.22), lineWidth: 0.8)
-                                    }
+                                Label(tag.name, systemImage: TagBarMetrics.symbolName(for: tag))
+                                    .tag(tag.id)
                             }
                         }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .controlSize(.small)
                         .fixedSize()
                         .help("选择所属标签")
                     }
 
                     Text("支持多行")
-                        .font(.system(size: 11.5, weight: .medium, design: .default))
-                        .foregroundStyle(ClipboardTheme.inkTertiary)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.tertiary)
                 }
 
                 ZStack(alignment: .topLeading) {
@@ -955,8 +615,8 @@ struct ClipboardPanelView: View {
 
                     if viewModel.draftText.isEmpty && !isTextEditorComposing {
                         Text("输入你想保存的常用文本…")
-                            .font(.system(size: 14, weight: .regular, design: .default))
-                            .foregroundStyle(ClipboardTheme.inkTertiary)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.tertiary)
                             // 与 macOS TextEditor 默认的文本容器内边距保持一致。
                             .padding(5)
                             .allowsHitTesting(false)
@@ -965,20 +625,12 @@ struct ClipboardPanelView: View {
                 .padding(10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white.opacity(0.75))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white, Color.black.opacity(0.08)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 1
-                                )
-                        }
-                        .shadow(color: Color.black.opacity(0.02), radius: 4, y: 1)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
                 }
                 .excludedFromWindowDrag()
 
@@ -987,14 +639,15 @@ struct ClipboardPanelView: View {
                         .font(.system(size: 11.5, weight: .semibold))
 
                     Text("回车保存，Shift + 回车或 ⌘ + 回车换行")
-                        .font(.system(size: 11.5, weight: .medium, design: .default))
+                        .font(.system(size: 11.5, weight: .medium))
 
                     Spacer()
 
                     Text("\(viewModel.draftText.count) 字")
-                        .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .monospacedDigit()
                 }
-                .foregroundStyle(ClipboardTheme.inkTertiary)
+                .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 18)
             .padding(.top, 3)
@@ -1005,25 +658,9 @@ struct ClipboardPanelView: View {
             }
 
             HStack(spacing: 10) {
-                Button {
+                Button("取消") {
                     viewModel.cancelEditing()
-                } label: {
-                    Text("取消")
-                        .font(.system(size: 13, weight: .medium, design: .default))
-                        .foregroundStyle(ClipboardTheme.ink)
-                        .padding(.horizontal, 14)
-                        .frame(height: 32)
-                        .background {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.white.opacity(0.60))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .stroke(Color.black.opacity(0.08), lineWidth: 0.8)
-                                }
-                                .shadow(color: Color.black.opacity(0.02), radius: 2, y: 1)
-                        }
                 }
-                .buttonStyle(.plain)
                 .excludedFromWindowDrag()
 
                 Spacer()
@@ -1031,29 +668,13 @@ struct ClipboardPanelView: View {
                 Button {
                     viewModel.saveDraft()
                 } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("保存")
-                            .font(.system(size: 13, weight: .semibold, design: .default))
-                    }
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 16)
-                    .frame(height: 32)
-                    .background {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(viewModel.canSaveDraft ? AnyShapeStyle(ClipboardTheme.accentGradient) : AnyShapeStyle(Color.gray.opacity(0.35)))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(Color.white.opacity(0.28), lineWidth: 0.8)
-                            }
-                            .shadow(color: viewModel.canSaveDraft ? ClipboardTheme.accent.opacity(0.35) : .clear, radius: 4, y: 2)
-                    }
+                    Label("保存", systemImage: "checkmark")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
                 .disabled(!viewModel.canSaveDraft)
                 .excludedFromWindowDrag()
             }
+            .controlSize(.large)
             .padding(.horizontal, 18)
             .padding(.vertical, 14)
         }
@@ -1071,28 +692,9 @@ struct ClipboardPanelView: View {
                     viewModel.cancelEditing()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(ClipboardTheme.inkSecondary)
-                        .frame(width: 32, height: 32)
-                        .contentShape(Circle())
+                        .panelCircleIcon()
                 }
-                .buttonStyle(.plain)
-                .background {
-                    Circle()
-                        .fill(Color.white.opacity(0.55))
-                        .overlay {
-                            Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white, Color.black.opacity(0.08)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 0.8
-                                )
-                        }
-                        .shadow(color: Color.black.opacity(0.02), radius: 2, y: 1)
-                }
+                .buttonStyle(PressableButtonStyle(scale: 0.92))
                 .help("返回列表")
                 .excludedFromWindowDrag()
             }
@@ -1100,81 +702,33 @@ struct ClipboardPanelView: View {
             if let title {
                 if showsTagButton {
                     HStack(spacing: 10) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            ClipboardTheme.accent.opacity(0.18),
-                                            ClipboardTheme.accent.opacity(0.08)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .stroke(
-                                            LinearGradient(
-                                                colors: [
-                                                    Color.white.opacity(0.8),
-                                                    ClipboardTheme.accent.opacity(0.3)
-                                                ],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ),
-                                            lineWidth: 1
-                                        )
-                                }
-                                .shadow(color: ClipboardTheme.accent.opacity(0.15), radius: 3, y: 1)
+                        IconTile(systemImage: "doc.on.clipboard.fill", tint: .accentColor, size: 28)
 
-                            Image(systemName: "doc.on.clipboard.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [ClipboardTheme.accent, ClipboardTheme.accentDeep],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        }
-                        .frame(width: 28, height: 28)
+                        Text(title)
+                            .font(.system(size: 14.5, weight: .semibold))
+                            .lineLimit(1)
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 6) {
-                                Text(title)
-                                    .font(.system(size: 14.5, weight: .bold, design: .default))
-                                    .foregroundStyle(ClipboardTheme.ink)
-                                    .lineLimit(1)
-
-                                Text(viewModel.hasSearchQuery || viewModel.searchScope == .allTags
-                                    ? "\(viewModel.visibleItems.count) 结果"
-                                    : "\(viewModel.items.count) 项")
-                                    .font(.system(size: 10, weight: .semibold, design: .default))
-                                    .foregroundStyle(ClipboardTheme.inkSecondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 1.5)
-                                    .background {
-                                        Capsule()
-                                            .fill(Color.black.opacity(0.04))
-                                            .overlay {
-                                                Capsule().stroke(Color.black.opacity(0.05), lineWidth: 0.5)
-                                            }
-                                    }
-                            }
-                        }
+                        Text(viewModel.hasSearchQuery || viewModel.searchScope == .allTags
+                            ? "\(viewModel.visibleItems.count) 结果"
+                            : "\(viewModel.items.count) 项")
+                            .font(.system(size: 10, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1.5)
+                            .background(.quinary, in: Capsule())
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title)
-                            .font(.system(size: 18, weight: .bold, design: .default))
-                            .foregroundStyle(ClipboardTheme.ink)
+                            .font(.system(size: 18, weight: .bold))
+                            .tracking(-0.2)
                             .lineLimit(1)
 
                         if let subtitle {
                             Text(subtitle)
-                                .font(.system(size: 11.5, weight: .medium, design: .default))
-                                .foregroundStyle(ClipboardTheme.inkTertiary)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
                     }
@@ -1188,78 +742,26 @@ struct ClipboardPanelView: View {
                     Button {
                         beginAddingTag()
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "tag.fill")
-                                .font(.system(size: 10))
-                            Text("标签")
-                            Image(systemName: "plus")
-                                .font(.system(size: 8.5, weight: .bold))
-                        }
-                        .font(.system(size: 11.5, weight: .semibold, design: .default))
-                        .foregroundStyle(ClipboardTheme.accentDeep)
-                        .padding(.horizontal, 10)
-                        .frame(height: 28)
-                        .contentShape(Capsule())
+                        Label("标签", systemImage: "plus")
                     }
-                    .buttonStyle(.plain)
-                    .background {
-                        Capsule()
-                            .fill(ClipboardTheme.accent.opacity(0.10))
-                            .overlay {
-                                Capsule()
-                                    .stroke(ClipboardTheme.accent.opacity(0.20), lineWidth: 0.8)
-                            }
-                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
                     .help("添加标签分类")
                     .excludedFromWindowDrag()
                 }
 
-                // 全局快捷键指示徽章
-                HStack(spacing: 3) {
-                    Text("⌥")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    Text("空格")
-                        .font(.system(size: 9.5, weight: .medium, design: .default))
-                }
-                .foregroundStyle(ClipboardTheme.inkTertiary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2.5)
-                .background {
-                    Capsule()
-                        .fill(Color.white.opacity(0.50))
-                        .overlay {
-                            Capsule().stroke(Color.black.opacity(0.06), lineWidth: 0.5)
-                        }
-                }
-                .help("全局唤起/隐藏快捷键")
+                Keycap("⌥ 空格")
+                    .help("全局唤起/隐藏快捷键")
             }
 
             Button {
                 onClose()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(ClipboardTheme.inkSecondary)
-                    .frame(width: 32, height: 32)
-                    .contentShape(Circle())
+                    .panelCircleIcon()
             }
-            .buttonStyle(.plain)
-            .background {
-                Circle()
-                    .fill(Color.white.opacity(0.60))
-                    .overlay {
-                        Circle()
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color.white, Color.black.opacity(0.08)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.8
-                            )
-                    }
-                    .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
-            }
+            .buttonStyle(PressableButtonStyle(scale: 0.92))
             .help("关闭")
             .excludedFromWindowDrag()
         }
@@ -1272,9 +774,5 @@ struct ClipboardPanelView: View {
         text
             .replacingOccurrences(of: "\n", with: "  ↵  ")
             .replacingOccurrences(of: "\r", with: "")
-    }
-
-    private var draftTagName: String {
-        viewModel.tags.first(where: { $0.id == viewModel.draftTagID })?.name ?? PasteTag.defaultName
     }
 }

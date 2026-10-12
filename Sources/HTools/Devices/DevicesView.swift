@@ -51,8 +51,8 @@ struct DevicesView: View {
                 install(url)
             }
         }
-        .onAppear { controller.startPolling() }
-        .onDisappear { controller.stopPolling() }
+        .onAppear { controller.startPolling(interval: DeviceController.foregroundPollInterval) }
+        .onDisappear { controller.startPolling(interval: DeviceController.backgroundPollInterval) }
     }
 
     private var subtitle: String {

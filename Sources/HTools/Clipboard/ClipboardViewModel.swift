@@ -124,8 +124,9 @@ final class ClipboardViewModel: ObservableObject {
         selectedItemID = visibleItems.first?.id
     }
 
+    /// Re-reads the shared in-memory store (the main window edits the same
+    /// `PasteItemStore` instance, so there is nothing to load from disk).
     func refreshFromStore() {
-        store.reload()
         tags = store.tags
 
         if let selectedTagID, tags.contains(where: { $0.id == selectedTagID }) {

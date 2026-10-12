@@ -77,9 +77,9 @@ struct ProcessesView: View {
                 .keyboardShortcut("r", modifiers: .command)
             }
         }
-        // 只在页面可见时轮询，离开页面立即停止，避免后台空转。
-        .onAppear { monitor.startMonitoring() }
-        .onDisappear { monitor.stopMonitoring() }
+        // 页面可见时高频轮询，离开页面后降频，只维持侧边栏角标。
+        .onAppear { monitor.startMonitoring(interval: ProcessMonitor.foregroundInterval) }
+        .onDisappear { monitor.startMonitoring(interval: ProcessMonitor.backgroundInterval) }
     }
 
     private var overview: some View {
