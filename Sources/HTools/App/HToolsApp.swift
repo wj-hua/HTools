@@ -24,6 +24,12 @@ struct HToolsApp: App {
                 Text("全局快捷键：⌥ Space")
             }
         }
+
+        MenuBarExtra("HTools", systemImage: "wrench.and.screwdriver") {
+            MenuBarView()
+                .environmentObject(appDelegate.model)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 

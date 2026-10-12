@@ -670,7 +670,7 @@ private struct TaskRow: View {
 
 // MARK: - 任务复选框
 
-private struct TaskCheckbox: View {
+struct TaskCheckbox: View {
     let isDone: Bool
     let onToggle: () -> Void
     @State private var isHovered = false
@@ -713,7 +713,7 @@ private struct TaskCheckbox: View {
 
 // MARK: - 截止日期徽章
 
-private struct DueDateBadge: View {
+struct DueDateBadge: View {
     let date: Date
     let isOverdue: Bool
 

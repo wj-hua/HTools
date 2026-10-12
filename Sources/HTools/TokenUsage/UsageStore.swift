@@ -13,6 +13,39 @@ final class UsageStore: ObservableObject {
         bucketsByGranularity[granularity] ?? []
     }
 
+    /// 包含当前时刻的周期；该周期还没有任何消耗时返回一个空桶。
+    func currentBucket(for granularity: Granularity) -> UsageBucket {
+        let calendar = Calendar.current
+        let now = Date()
+        let allBuckets = buckets(for: granularity)
+
+        switch granularity {
+        case .hour:
+            if let b = allBuckets.first(where: { calendar.isDate($0.startDate, equalTo: now, toGranularity: .hour) }) {
+                return b
+            }
+            return UsageBucket(id: "current-hour", label: now.formatted(.dateTime.hour().minute()), startDate: now)
+        case .day:
+            if let b = allBuckets.first(where: { calendar.isDateInToday($0.startDate) }) {
+                return b
+            }
+            return UsageBucket(id: "today", label: now.formatted(.dateTime.month().day().weekday()), startDate: now)
+        case .week:
+            if let interval = calendar.dateInterval(of: .weekOfYear, for: now),
+               let b = allBuckets.first(where: { interval.contains($0.startDate) }) {
+                return b
+            }
+            return UsageBucket(id: "this-week", label: "本周", startDate: now)
+        case .month:
+            if let b = allBuckets.first(where: { calendar.isDate($0.startDate, equalTo: now, toGranularity: .month) }) {
+                return b
+            }
+            return UsageBucket(id: "this-month", label: now.formatted(.dateTime.year().month()), startDate: now)
+        case .total:
+            return allBuckets.first ?? UsageBucket(id: "total", label: "全部", startDate: .distantPast)
+        }
+    }
+
     /// A scan already in progress is not restarted: the detached parsing work cannot
     /// be cancelled anyway, and its result is at most a few seconds old.
     func refresh() {
