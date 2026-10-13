@@ -10,6 +10,8 @@ final class ProcessMonitor: ObservableObject {
     @Published var activeToolCount: Int = 0
     @Published var isScanning: Bool = false
     @Published var lastUpdated: Date?
+    @Published private(set) var terminatingPIDs: Set<pid_t> = []
+    @Published var terminationError: String?
 
     /// 页面可见时 3 秒刷新；离开页面后降到 30 秒一次，只为让侧边栏角标保持大致准确。
     static let foregroundInterval: TimeInterval = 3
@@ -48,35 +50,103 @@ final class ProcessMonitor: ObservableObject {
     }
 
     func terminateProcess(pid: pid_t) {
-        Darwin.kill(pid, SIGTERM)
-        Task { [weak self] in
-            guard let self else { return }
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            if Darwin.kill(pid, 0) == 0 {
-                Darwin.kill(pid, SIGKILL)
-            }
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            await self.refreshAsync()
-        }
+        terminateProcesses(pids: [pid])
     }
 
     func terminateAllProcesses(for tool: Tool) {
-        guard let summary = summaries[tool], !summary.processes.isEmpty else { return }
-        let pids = summary.processes.map(\.pid)
-        for pid in pids {
-            Darwin.kill(pid, SIGTERM)
+        // 点击时重新扫描，避免漏掉上次刷新后启动的包装器或后台进程。
+        let pids = Self.scanProcesses().filter { $0.tool == tool }.map(\.pid)
+        terminateProcesses(pids: pids)
+    }
+
+    private func terminateProcesses(pids: [pid_t]) {
+        let targets = Self.processTree(rootPIDs: pids).filter {
+            !terminatingPIDs.contains($0.pid)
         }
-        Task { [weak self] in
-            guard let self else { return }
+        guard !targets.isEmpty else {
+            refresh()
+            return
+        }
+        let targetPIDs = Set(targets.map(\.pid))
+        terminatingPIDs.formUnion(targetPIDs)
+        terminationError = nil
+
+        Task {
+            defer { terminatingPIDs.subtract(targetPIDs) }
+            var failures: [pid_t: String] = [:]
+            for target in targets {
+                if let error = Self.sendSignal(SIGTERM, to: target) {
+                    failures[target.pid] = error
+                }
+            }
             try? await Task.sleep(nanoseconds: 300_000_000)
-            for pid in pids {
-                if Darwin.kill(pid, 0) == 0 {
-                    Darwin.kill(pid, SIGKILL)
+            for target in targets {
+                if let error = Self.sendSignal(SIGKILL, to: target) {
+                    failures[target.pid] = error
                 }
             }
             try? await Task.sleep(nanoseconds: 150_000_000)
-            await self.refreshAsync()
+            let remaining = targets.filter { Self.isSameProcess($0) }
+            if !remaining.isEmpty {
+                terminationError = remaining.map {
+                    "PID \($0.pid)：\(failures[$0.pid] ?? "进程仍在运行，请重试")"
+                }.joined(separator: "\n")
+            }
+            await refreshAsync()
         }
+    }
+
+    private struct ProcessTarget {
+        let pid: pid_t
+        let parentPID: pid_t
+        let startSeconds: UInt64
+        let startMicroseconds: UInt64
+    }
+
+    nonisolated private static func processInfo(pid: pid_t) -> proc_bsdinfo? {
+        guard pid > 1, pid != getpid() else { return nil }
+        var info = proc_bsdinfo()
+        let length = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info,
+                                  Int32(MemoryLayout<proc_bsdinfo>.size))
+        guard length == MemoryLayout<proc_bsdinfo>.size,
+              info.pbi_uid == getuid(), info.pbi_status != UInt32(SZOMB) else { return nil }
+        return info
+    }
+
+    nonisolated private static func processTree(rootPIDs: [pid_t]) -> [ProcessTarget] {
+        let processes = allProcessIDs().compactMap { pid -> ProcessTarget? in
+            guard let info = processInfo(pid: pid) else { return nil }
+            return ProcessTarget(pid: pid, parentPID: pid_t(info.pbi_ppid),
+                                 startSeconds: info.pbi_start_tvsec,
+                                 startMicroseconds: info.pbi_start_tvusec)
+        }
+        var selected = Set(rootPIDs)
+        var targets = processes.filter { selected.contains($0.pid) }
+        // 只沿子进程方向查找，不能结束启动 Cline 的终端或编辑器。
+        // 先保存整个进程树，父进程退出后子进程的 PPID 会改变。
+        while true {
+            let children = processes.filter {
+                selected.contains($0.parentPID) && !selected.contains($0.pid)
+            }
+            guard !children.isEmpty else { break }
+            targets.append(contentsOf: children)
+            selected.formUnion(children.map(\.pid))
+        }
+        return targets
+    }
+
+    nonisolated private static func isSameProcess(_ target: ProcessTarget) -> Bool {
+        guard let info = processInfo(pid: target.pid) else { return false }
+        // 延迟强制结束前核对启动时间，防止 PID 被其他进程复用。
+        return info.pbi_start_tvsec == target.startSeconds
+            && info.pbi_start_tvusec == target.startMicroseconds
+    }
+
+    nonisolated private static func sendSignal(_ signal: Int32, to target: ProcessTarget) -> String? {
+        guard isSameProcess(target) else { return nil }
+        guard Darwin.kill(target.pid, signal) != 0 else { return nil }
+        let code = errno
+        return code == ESRCH ? nil : String(cString: strerror(code))
     }
 
     private func refreshAsync() async {
@@ -118,24 +188,18 @@ final class ProcessMonitor: ObservableObject {
     // MARK: - Process Scanning (Darwin Low-Level APIs)
 
     nonisolated private static func scanProcesses() -> [ToolProcessItem] {
-        var pids = [pid_t](repeating: 0, count: 4096)
-        let numPids = proc_listallpids(&pids, Int32(MemoryLayout<pid_t>.stride * pids.count))
-        guard numPids > 0 else { return [] }
-
+        let pids = allProcessIDs()
         let currentUid = getuid()
         var pathBuffer = [CChar](repeating: 0, count: 4096)
-        var bsdInfo = proc_bsdinfo()
         var taskInfo = proc_taskinfo()
 
         var results: [ToolProcessItem] = []
 
-        for i in 0..<Int(numPids) {
-            let pid = pids[i]
+        for pid in pids {
             guard pid > 0 else { continue }
 
             // 1. Check process ownership (only current user's processes)
-            let bsdLen = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsdInfo, Int32(MemoryLayout<proc_bsdinfo>.size))
-            guard bsdLen > 0, bsdInfo.pbi_uid == currentUid else { continue }
+            guard let bsdInfo = processInfo(pid: pid), bsdInfo.pbi_uid == currentUid else { continue }
 
             // 2. Query binary path
             let pathLen = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
@@ -224,6 +288,16 @@ final class ProcessMonitor: ObservableObject {
         }
 
         return results
+    }
+
+    nonisolated private static func allProcessIDs() -> [pid_t] {
+        // proc_listallpids 返回 PID 数量，预留余量以容纳扫描期间启动的进程。
+        let capacity = Int(proc_listallpids(nil, 0)) + 128
+        guard capacity > 128 else { return [] }
+        var pids = [pid_t](repeating: 0, count: capacity)
+        let count = proc_listallpids(&pids, Int32(MemoryLayout<pid_t>.stride * pids.count))
+        guard count > 0 else { return [] }
+        return Array(pids.prefix(min(Int(count), pids.count)))
     }
 
     nonisolated private static func isScriptInterpreter(_ name: String) -> Bool {

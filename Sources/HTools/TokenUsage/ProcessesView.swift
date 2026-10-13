@@ -77,6 +77,14 @@ struct ProcessesView: View {
                 .keyboardShortcut("r", modifiers: .command)
             }
         }
+        .alert("结束进程失败", isPresented: Binding(
+            get: { monitor.terminationError != nil },
+            set: { if !$0 { monitor.terminationError = nil } }
+        )) {
+            Button("确定") { monitor.terminationError = nil }
+        } message: {
+            Text(monitor.terminationError ?? "")
+        }
         // 页面可见时高频轮询，离开页面后降频，只维持侧边栏角标。
         .onAppear { monitor.startMonitoring(interval: ProcessMonitor.foregroundInterval) }
         .onDisappear { monitor.startMonitoring(interval: ProcessMonitor.backgroundInterval) }
@@ -203,7 +211,7 @@ private struct ToolProcessCard: View {
 
                     VStack(spacing: 0) {
                         ForEach(summary.processes) { process in
-                            ProcessRow(process: process) {
+                            ProcessRow(process: process, isTerminating: monitor.terminatingPIDs.contains(process.pid)) {
                                 monitor.terminateProcess(pid: process.pid)
                             }
                             if process.id != summary.processes.last?.id {
@@ -221,9 +229,9 @@ private struct ToolProcessCard: View {
 
 private struct ProcessRow: View {
     let process: ToolProcessItem
+    let isTerminating: Bool
     let onTerminate: () -> Void
     @State private var isHovered = false
-    @State private var isTerminating = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -247,7 +255,6 @@ private struct ProcessRow: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
             Button {
-                isTerminating = true
                 onTerminate()
             } label: {
                 Image(systemName: isTerminating ? "hourglass" : "xmark.circle.fill")
@@ -255,7 +262,7 @@ private struct ProcessRow: View {
                     .imageScale(.large)
             }
             .buttonStyle(PressableButtonStyle(scale: 0.88))
-            .help("结束此进程")
+            .help("结束此进程及其子进程")
             .disabled(isTerminating)
         }
         .padding(.horizontal, 16)
