@@ -1,16 +1,231 @@
+import AppKit
 import Foundation
 import Security
+import SwiftUI
+
+/// 上传进度信息，包含精确已发送字节数与总字节数。
+struct PgyerUploadProgress: Equatable, Sendable {
+    var fraction: Double
+    var bytesSent: Int64
+    var totalBytes: Int64
+
+    var formattedSent: String {
+        ByteCountFormatter.string(fromByteCount: bytesSent, countStyle: .file)
+    }
+
+    var formattedTotal: String {
+        ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
+    }
+}
+
+/// 支持的移动平台类型。
+enum AppPlatform: String, Codable, Sendable, CaseIterable {
+    case android = "Android"
+    case ios = "iOS"
+    case harmonyOS = "HarmonyOS"
+    case unknown = "其他"
+
+    var title: String { rawValue }
+
+    var badgeColor: Color {
+        switch self {
+        case .android: return .green
+        case .ios: return .blue
+        case .harmonyOS: return .orange
+        case .unknown: return .secondary
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .android: return "candybarphone"
+        case .ios: return "iphone"
+        case .harmonyOS: return "circle.hexagongrid.fill"
+        case .unknown: return "shippingbox.fill"
+        }
+    }
+
+    static func from(pathExtension: String) -> AppPlatform {
+        switch pathExtension.lowercased() {
+        case "apk": return .android
+        case "ipa": return .ios
+        case "hap": return .harmonyOS
+        default: return .unknown
+        }
+    }
+
+    static func from(buildType: String?) -> AppPlatform {
+        guard let buildType else { return .unknown }
+        switch buildType.lowercased() {
+        case "1", "ipa", "ios": return .ios
+        case "2", "apk", "android": return .android
+        case "hap", "harmony", "harmonyos": return .harmonyOS
+        default: return .unknown
+        }
+    }
+}
 
 /// 发布成功后蒲公英返回的版本信息（`buildInfo` 接口）。
-struct PgyerBuild: Decodable, Sendable, Equatable {
+struct PgyerBuild: Codable, Sendable, Equatable, Identifiable {
+    var id: String {
+        buildKey ?? (buildShortcutUrl.isEmpty ? UUID().uuidString : buildShortcutUrl)
+    }
+
+    var buildKey: String?
+    let buildType: String?
     let buildName: String?
     let buildVersion: String?
     let buildVersionNo: String?
     let buildShortcutUrl: String
     let buildQRCodeURL: String?
+    let buildIcon: String?
+    let buildDescription: String?
+    let buildUpdateDescription: String?
+    let buildFileSize: String?
+    let buildCreated: String?
 
-    var shortcutURL: URL? { URL(string: "https://www.pgyer.com/\(buildShortcutUrl)") }
-    var qrCodeURL: URL? { buildQRCodeURL.flatMap(URL.init(string:)) }
+    // 本地持久化补充字段
+    var uploadedAt: Date?
+    var localInstallType: Int?
+    var localPassword: String?
+    var localUpdateDescription: String?
+    var localFileName: String?
+    var localFileSizeBytes: Int64?
+
+    /// 固定的长链接：以 32 位 buildKey 为路径，永久唯一对应当前上传的构建版本。
+    var fixedURL: URL? {
+        guard let buildKey, !buildKey.isEmpty else { return nil }
+        return URL(string: "https://www.pgyer.com/\(buildKey)")
+    }
+
+    /// 应用短链接：以 buildShortcutUrl 为路径。
+    var shortcutURL: URL? {
+        guard !buildShortcutUrl.isEmpty else { return nil }
+        return URL(string: "https://www.pgyer.com/\(buildShortcutUrl)")
+    }
+
+    /// 复制链接、分享文案与浏览器打开的首选链接：优先使用固定的长链接（https://www.pgyer.com/{buildKey}），若无则回退到短链接。
+    var downloadURL: URL? {
+        fixedURL ?? shortcutURL
+    }
+
+    var qrCodeURL: URL? {
+        buildQRCodeURL.flatMap(URL.init(string:))
+    }
+
+    var iconURL: URL? {
+        buildIcon.flatMap(URL.init(string:))
+    }
+
+    var platform: AppPlatform {
+        if let localFileName, let ext = localFileName.split(separator: ".").last {
+            let plat = AppPlatform.from(pathExtension: String(ext))
+            if plat != .unknown { return plat }
+        }
+        return AppPlatform.from(buildType: buildType)
+    }
+
+    var displayVersion: String {
+        var parts: [String] = []
+        if let v = buildVersion, !v.isEmpty { parts.append("v\(v)") }
+        if let b = buildVersionNo, !b.isEmpty { parts.append("(\(b))") }
+        return parts.isEmpty ? "未知版本" : parts.joined(separator: " ")
+    }
+
+    var installTypeDescription: String {
+        guard let localInstallType, let type = PgyerInstallType(rawValue: localInstallType) else {
+            return "公开"
+        }
+        return type.title
+    }
+
+    var formattedFileSize: String {
+        if let localFileSizeBytes, localFileSizeBytes > 0 {
+            return ByteCountFormatter.string(fromByteCount: localFileSizeBytes, countStyle: .file)
+        }
+        if let buildFileSize, let bytes = Int64(buildFileSize), bytes > 0 {
+            return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        }
+        return "未知大小"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case buildKey, buildType, buildName, buildVersion, buildVersionNo
+        case buildShortcutUrl, buildQRCodeURL, buildIcon, buildDescription
+        case buildUpdateDescription, buildFileSize, buildCreated
+        case uploadedAt, localInstallType, localPassword, localUpdateDescription
+        case localFileName, localFileSizeBytes
+    }
+
+    init(
+        buildKey: String? = nil,
+        buildType: String? = nil,
+        buildName: String? = nil,
+        buildVersion: String? = nil,
+        buildVersionNo: String? = nil,
+        buildShortcutUrl: String,
+        buildQRCodeURL: String? = nil,
+        buildIcon: String? = nil,
+        buildDescription: String? = nil,
+        buildUpdateDescription: String? = nil,
+        buildFileSize: String? = nil,
+        buildCreated: String? = nil,
+        uploadedAt: Date? = nil,
+        localInstallType: Int? = nil,
+        localPassword: String? = nil,
+        localUpdateDescription: String? = nil,
+        localFileName: String? = nil,
+        localFileSizeBytes: Int64? = nil
+    ) {
+        self.buildKey = buildKey
+        self.buildType = buildType
+        self.buildName = buildName
+        self.buildVersion = buildVersion
+        self.buildVersionNo = buildVersionNo
+        self.buildShortcutUrl = buildShortcutUrl
+        self.buildQRCodeURL = buildQRCodeURL
+        self.buildIcon = buildIcon
+        self.buildDescription = buildDescription
+        self.buildUpdateDescription = buildUpdateDescription
+        self.buildFileSize = buildFileSize
+        self.buildCreated = buildCreated
+        self.uploadedAt = uploadedAt
+        self.localInstallType = localInstallType
+        self.localPassword = localPassword
+        self.localUpdateDescription = localUpdateDescription
+        self.localFileName = localFileName
+        self.localFileSizeBytes = localFileSizeBytes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.buildKey = try? container.decodeIfPresent(String.self, forKey: .buildKey)
+        self.buildType = try? container.decodeIfPresent(String.self, forKey: .buildType)
+        self.buildName = try? container.decodeIfPresent(String.self, forKey: .buildName)
+        self.buildVersion = try? container.decodeIfPresent(String.self, forKey: .buildVersion)
+        self.buildVersionNo = try? container.decodeIfPresent(String.self, forKey: .buildVersionNo)
+        self.buildShortcutUrl = (try? container.decodeIfPresent(String.self, forKey: .buildShortcutUrl)) ?? ""
+        self.buildQRCodeURL = try? container.decodeIfPresent(String.self, forKey: .buildQRCodeURL)
+        self.buildIcon = try? container.decodeIfPresent(String.self, forKey: .buildIcon)
+        self.buildDescription = try? container.decodeIfPresent(String.self, forKey: .buildDescription)
+        self.buildUpdateDescription = try? container.decodeIfPresent(String.self, forKey: .buildUpdateDescription)
+
+        if let sizeStr = try? container.decodeIfPresent(String.self, forKey: .buildFileSize) {
+            self.buildFileSize = sizeStr
+        } else if let sizeInt = try? container.decodeIfPresent(Int64.self, forKey: .buildFileSize) {
+            self.buildFileSize = String(sizeInt)
+        } else {
+            self.buildFileSize = nil
+        }
+
+        self.buildCreated = try? container.decodeIfPresent(String.self, forKey: .buildCreated)
+        self.uploadedAt = try? container.decodeIfPresent(Date.self, forKey: .uploadedAt)
+        self.localInstallType = try? container.decodeIfPresent(Int.self, forKey: .localInstallType)
+        self.localPassword = try? container.decodeIfPresent(String.self, forKey: .localPassword)
+        self.localUpdateDescription = try? container.decodeIfPresent(String.self, forKey: .localUpdateDescription)
+        self.localFileName = try? container.decodeIfPresent(String.self, forKey: .localFileName)
+        self.localFileSizeBytes = try? container.decodeIfPresent(Int64.self, forKey: .localFileSizeBytes)
+    }
 }
 
 /// 安装方式，对应 `buildInstallType`。
@@ -73,7 +288,7 @@ enum PgyerService {
         fileURL: URL,
         apiKey: String,
         options: Options,
-        onProgress: @escaping @Sendable (Double) -> Void
+        onProgress: @escaping @Sendable (PgyerUploadProgress) -> Void
     ) async throws -> PgyerBuild {
         let buildType = fileURL.pathExtension.lowercased()
         guard supportedExtensions.contains(buildType) else {
@@ -91,7 +306,11 @@ enum PgyerService {
         }
         let token = try await getCOSToken(fields: fields)
         try await uploadFile(fileURL, token: token, onProgress: onProgress)
-        return try await waitForPublish(apiKey: apiKey, buildKey: token.key)
+        var build = try await waitForPublish(apiKey: apiKey, buildKey: token.key)
+        if build.buildKey == nil || build.buildKey?.isEmpty == true {
+            build.buildKey = token.key
+        }
+        return build
     }
 
     // MARK: - 第 1 步：上传凭证
@@ -116,7 +335,7 @@ enum PgyerService {
     private static func uploadFile(
         _ fileURL: URL,
         token: COSToken,
-        onProgress: @escaping @Sendable (Double) -> Void
+        onProgress: @escaping @Sendable (PgyerUploadProgress) -> Void
     ) async throws {
         let boundary = "HTools-\(UUID().uuidString)"
         // 安装包可能有几百 MB：先流式写成临时 multipart 文件再上传，避免整包读进内存。
@@ -215,9 +434,9 @@ enum PgyerService {
 }
 
 private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
-    let onProgress: @Sendable (Double) -> Void
+    let onProgress: @Sendable (PgyerUploadProgress) -> Void
 
-    init(onProgress: @escaping @Sendable (Double) -> Void) {
+    init(onProgress: @escaping @Sendable (PgyerUploadProgress) -> Void) {
         self.onProgress = onProgress
     }
 
@@ -229,7 +448,12 @@ private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Se
         totalBytesExpectedToSend: Int64
     ) {
         guard totalBytesExpectedToSend > 0 else { return }
-        onProgress(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
+        let fraction = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
+        onProgress(PgyerUploadProgress(
+            fraction: fraction,
+            bytesSent: totalBytesSent,
+            totalBytes: totalBytesExpectedToSend
+        ))
     }
 }
 
@@ -257,5 +481,10 @@ enum PgyerKeychain {
         var item = query
         item[kSecValueData as String] = Data(apiKey.utf8)
         return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    @discardableResult
+    static func delete() -> Bool {
+        SecItemDelete(query as CFDictionary) == errSecSuccess
     }
 }
