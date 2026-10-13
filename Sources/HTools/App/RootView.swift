@@ -6,6 +6,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case snippets
     case tasks
     case devices
+    case distribution
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .snippets: return "常用文本"
         case .tasks: return "任务清单"
         case .devices: return "手机调试"
+        case .distribution: return "蒲公英分发"
         }
     }
 
@@ -26,6 +28,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .snippets: return "text.quote"
         case .tasks: return "checklist"
         case .devices: return "iphone.gen3"
+        case .distribution: return "paperplane"
         }
     }
 }
@@ -62,6 +65,8 @@ struct RootView: View {
             TasksView(store: model.taskStore)
         case .devices:
             DevicesView()
+        case .distribution:
+            DistributionView(uploader: model.pgyerUploader)
         }
     }
 }
@@ -84,6 +89,7 @@ private struct SidebarView: View {
             }
             Section("移动设备") {
                 row(.devices, badge: devices.connectedCount)
+                row(.distribution)
             }
         }
     }

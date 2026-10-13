@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
 
     // 设备
     let devices = DeviceController()
+    let pgyerUploader = PgyerUploader()
 
     init() {
         clipboardViewModel = ClipboardViewModel(store: pasteStore, pasteService: pasteService)
