@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#F2F2F7</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="ink">#1C1C1E</color>
+    <color name="body">#51515C</color>
+    <color name="muted">#696972</color>
+    <color name="accent">#0064D9</color>
+    <color name="accent_fill">#0064D9</color>
+    <color name="on_accent">#FFFFFF</color>
+    <color name="accent_soft">#E8F1FF</color>
+    <color name="search_surface">#E7E7ED</color>
+    <color name="outline">#E5E5EA</color>
+    <color name="ripple">#1A0064D9</color>
+</resources>

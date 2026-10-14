@@ -7,6 +7,7 @@
 | Token 用量 | used-token | 按小时/天/周/月/总计统计 Claude Code、Codex、agy、Cline 的 Token，含趋势图 |
 | 进程与内存 | used-token | 页面可见时每 3 秒刷新，可结束单个或全部进程 |
 | 常用文本 | clipboard | 管理标签与文本；在任意应用按 `⌥ Space` 呼出原有的快速粘贴面板 |
+| 跨设备粘贴板 | 新增 | Mac 自动上传文本与图片至阿里云；Android 复制、下载；仅保留最新 50 条 |
 | 手机调试 | adb-app | ADB / HDC 设备：截屏、录屏、内嵌实时投屏（Android 可点击/拖动操作，无需 scrcpy；鸿蒙为只读预览）、安装（可直接拖入窗口）、无线连接与配对、开发者选项、前台应用 |
 
 关闭主窗口后 App 仍在后台运行，`⌥ Space` 依然可用；点击 Dock 图标重新打开窗口，`⌘Q` 退出。
@@ -30,3 +31,15 @@ open dist/HTools.app
 共享的组件与动效参数集中在 `Sources/HTools/App/DesignSystem.swift`，新增界面请优先复用。
 具体对应关系和其他约定见 [CLAUDE.md](CLAUDE.md)。
 
+## 跨设备粘贴板
+
+打开侧边栏“跨设备粘贴板”，配置 HTTPS 地址与密钥，开启“自动同步”。
+之后复制的文本和图片会上传，关闭主窗口后仍继续同步；可随时暂停。
+断网时保留最新 50 条待上传记录并自动重试。
+
+Android 项目位于 [Android/Clipboard](Android/Clipboard)，在小纸夹首页点击“云端”。
+首次连接可复制 Mac 页面里的 Android 配对信息，在手机“连接”中粘贴。
+云端记录可复制或下载，Android 图片复制支持接收图片的应用。
+
+服务器只保留最新 50 条，超出的记录及图片自动删除。
+部署、可选天数过期设置与 API 见 [服务说明](server/README.md)。

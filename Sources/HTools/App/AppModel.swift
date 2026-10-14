@@ -20,6 +20,7 @@ final class AppModel: ObservableObject {
 
     // 任务清单
     let taskStore = TaskStore()
+    let cloudClipboard = CloudClipboardStore()
 
     // 设备
     let devices = DeviceController()
@@ -40,6 +41,7 @@ final class AppModel: ObservableObject {
         hotKeyController = hotKey
 
         refreshAccessibilityStatus()
+        cloudClipboard.start()
         usageStore.refresh()
         processMonitor.startMonitoring(interval: ProcessMonitor.backgroundInterval)
     }

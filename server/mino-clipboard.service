@@ -1,0 +1,22 @@
+[Unit]
+Description=Mino private cross-device clipboard
+After=network.target
+
+[Service]
+User=mino-clipboard
+Group=mino-clipboard
+EnvironmentFile=/etc/mino-clipboard.env
+ExecStart=/usr/bin/python3 /opt/mino-clipboard/clipboard_server.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+StateDirectoryMode=0700
+StateDirectory=mino-clipboard
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mino-clipboard
+
+[Install]
+WantedBy=multi-user.target

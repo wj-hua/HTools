@@ -4,6 +4,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case tokens
     case processes
     case snippets
+    case cloudClipboard
     case tasks
     case devices
     case distribution
@@ -15,6 +16,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .tokens: return "Token 用量"
         case .processes: return "进程与内存"
         case .snippets: return "常用文本"
+        case .cloudClipboard: return "跨设备粘贴板"
         case .tasks: return "任务清单"
         case .devices: return "手机调试"
         case .distribution: return "蒲公英分发"
@@ -26,6 +28,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .tokens: return "chart.bar.xaxis"
         case .processes: return "memorychip"
         case .snippets: return "text.quote"
+        case .cloudClipboard: return "doc.on.clipboard"
         case .tasks: return "checklist"
         case .devices: return "iphone.gen3"
         case .distribution: return "paperplane"
@@ -61,6 +64,8 @@ struct RootView: View {
             ProcessesView(monitor: model.processMonitor)
         case .snippets:
             SnippetsView(store: model.pasteStore)
+        case .cloudClipboard:
+            CloudClipboardView(store: model.cloudClipboard)
         case .tasks:
             TasksView(store: model.taskStore)
         case .devices:
@@ -85,6 +90,7 @@ private struct SidebarView: View {
             }
             Section("效率") {
                 row(.snippets)
+                row(.cloudClipboard)
                 row(.tasks, badge: taskStore.pendingCount)
             }
             Section("移动设备") {

@@ -1,0 +1,5 @@
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/ripple">
+    <item>
+        <inset android:insetTop="6dp" android:insetBottom="6dp" android:drawable="@drawable/bg_soft" />
+    </item>
+</ripple>
