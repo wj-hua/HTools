@@ -8,6 +8,9 @@ struct CloudClipboardView: View {
     @State private var clearingPending = false
     @State private var address = ""
     @State private var key = ""
+    @State private var addingDevice = false
+    @State private var deviceName = ""
+    @State private var revoking: CloudDevice?
 
     var body: some View {
         ScrollView {
@@ -28,7 +31,7 @@ struct CloudClipboardView: View {
                         .font(.callout).foregroundStyle(.secondary).padding(.top, 8)
                     HStack {
                         Button("连接设置", systemImage: "gearshape") { address = store.endpoint; key = store.token; showingConnection = true }
-                        Button("复制 Android 配对信息", systemImage: "link") { store.copyPairing() }.disabled(store.token.isEmpty)
+                        Button("添加 Android 设备…", systemImage: "plus") { deviceName = ""; addingDevice = true }.disabled(store.token.isEmpty)
                         Spacer()
                         if store.pendingCount > 0 {
                             Text("待同步 \(store.pendingCount) 条").font(.caption).foregroundStyle(.secondary)
@@ -39,6 +42,28 @@ struct CloudClipboardView: View {
                         Button("刷新", systemImage: "arrow.clockwise") { Task { await store.refresh() } }
                             .disabled(store.isRefreshing || store.token.isEmpty)
                     }
+                    }
+                }
+                if !store.devices.isEmpty {
+                    Card {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Android 设备").font(.headline)
+                            ForEach(store.devices) { device in
+                                HStack {
+                                    IconTile(systemImage: "iphone", tint: .green)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(device.name)
+                                        Group {
+                                            if let date = device.lastSeenDate {
+                                                Text("最近连接 \(date.formatted(.dateTime.month().day().hour().minute()))")
+                                            } else { Text("尚未连接") }
+                                        }.font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button("撤销", role: .destructive) { revoking = device }
+                                }
+                            }
+                        }
                     }
                 }
                 if store.items.isEmpty {
@@ -72,13 +97,13 @@ struct CloudClipboardView: View {
         }
         .navigationTitle("跨设备粘贴板")
         .toast($store.toastMessage)
-        .task { if !store.token.isEmpty { await store.refresh() } }
+        .task { if !store.token.isEmpty { await store.refresh(); await store.refreshDevices() } }
         .sheet(isPresented: $showingConnection) {
             VStack(alignment: .leading, spacing: 16) {
                 Text("服务器连接").font(.title2.bold())
                 TextField("HTTPS 服务器地址", text: $address)
                 SecureField("连接密钥", text: $key)
-                Text("密钥保存在 macOS 钥匙串中。保存后，复制配对信息并在 Android 中粘贴一次。")
+                Text("这是 Mac 的主密钥，保存在 macOS 钥匙串中，不要复制到其他设备。Android 设备请用“添加 Android 设备”获取独立密钥。")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Spacer()
@@ -91,6 +116,17 @@ struct CloudClipboardView: View {
         .confirmationDialog("删除这条云端记录？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("删除", role: .destructive) { if let item = deleting { Task { await store.delete(item) } }; deleting = nil }
         }
+        .alert("添加 Android 设备", isPresented: $addingDevice) {
+            TextField("设备名称", text: $deviceName)
+            Button("取消", role: .cancel) {}
+            Button("生成配对信息") {
+                let name = deviceName.trimmingCharacters(in: .whitespacesAndNewlines)
+                Task { await store.addDevice(name: name) }
+            }.disabled(deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: { Text("为这台设备生成独立密钥，配对信息会复制到剪贴板，只显示这一次。") }
+        .confirmationDialog("撤销“\(revoking?.name ?? "")”？", isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } })) {
+            Button("撤销", role: .destructive) { if let device = revoking { Task { await store.revoke(device) } }; revoking = nil }
+        } message: { Text("该设备将无法再访问云端粘贴板，需重新添加才能使用。") }
         .confirmationDialog("清空尚未上传的记录？", isPresented: $clearingPending) {
             Button("清空待同步", role: .destructive) { store.clearPending() }
         }

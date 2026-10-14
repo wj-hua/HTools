@@ -54,7 +54,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 跨设备粘贴板（1.1）
 
-首页点击“云端”，在“连接”中粘贴 Mac HTools 页面复制的 Android 配对信息。
+首页点击“云端”，在“连接”中粘贴 Mac HTools 页面“添加 Android 设备”生成的配对信息（每台设备独立，可在 Mac 上撤销）。
 连接验证成功后保存到应用私有目录，不随应用备份导出。
 进入云端页面自动刷新，前台每 10 秒更新，也可点“刷新云端记录”。
 

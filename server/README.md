@@ -51,6 +51,8 @@ location /clipboard-api/ {
 ## API
 
 每个请求都须使用 `Authorization: Bearer <密钥>`，响应禁止缓存。
+`CLIPBOARD_TOKEN` 是 Mac 的主密钥；每台 Android 设备使用 Mac 签发的独立密钥，
+服务器只保存其 SHA-256 摘要，可单独撤销。设备密钥只能访问记录，不能管理设备。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -58,10 +60,13 @@ location /clipboard-api/ {
 | PUT | `/items/{uuid}` | 上传 UTF-8 文本（1 MB）或 PNG 图片（20 MB） |
 | GET | `/items/{uuid}/content` | 下载原始内容 |
 | DELETE | `/items/{uuid}` | 删除记录及内容 |
+| GET | `/devices` | 列出设备及最近连接时间（仅主密钥） |
+| POST | `/devices` | `{"name": "..."}` 新建设备，仅此次返回设备密钥（仅主密钥） |
+| DELETE | `/devices/{uuid}` | 撤销设备（仅主密钥） |
 
 PUT 使用 `Content-Type: text/plain; charset=utf-8` 或 `image/png`，请求体为原始内容。
 同一 UUID 重试不会增加记录或改变顺序。时间由服务器记录，单位为毫秒。
-已被清理的记录返回 404；错误密钥返回 401。
+已被清理的记录返回 404；错误或已撤销的密钥返回 401；设备密钥调用设备接口返回 403。
 
 ## 客户端
 
@@ -69,7 +74,8 @@ Mac 的连接密钥保存在 macOS 钥匙串。首次部署的配对文件保存
 `~/Library/Application Support/com.mino.HTools/cloud-clipboard-connection.json`（600），
 属于本机私有配置，不进入 Git。
 Android 连接配置存于应用私有目录，禁止应用备份。
-也可在 Mac 页面复制 Android 配对信息，在 Android 的“云端 → 连接”中粘贴。
+在 Mac 页面点“添加 Android 设备”，为每台设备生成独立的配对信息，在 Android 的“云端 → 连接”中粘贴；
+设备列表显示最近连接时间，可单独撤销。
 
 Mac 开启自动同步后，每秒检查剪贴板变化，跳过系统标记的隐藏、临时、自动生成内容。
 启动/恢复同步时不上传之前的剪贴板。配对密钥不会上传。

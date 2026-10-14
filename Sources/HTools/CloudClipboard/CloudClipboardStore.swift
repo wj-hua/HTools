@@ -15,6 +15,15 @@ struct CloudClip: Codable, Identifiable {
     var date: Date { Date(timeIntervalSince1970: Double(createdAt) / 1000) }
 }
 
+struct CloudDevice: Codable, Identifiable {
+    let id: String
+    let name: String
+    let createdAt: Int64
+    let lastSeen: Int64?
+    let token: String?
+    var lastSeenDate: Date? { lastSeen.map { Date(timeIntervalSince1970: Double($0) / 1000) } }
+}
+
 @MainActor
 final class CloudClipboardStore: ObservableObject {
     @Published private(set) var endpoint: String = UserDefaults.standard.string(forKey: "cloudClipboardEndpoint") ?? "https://www.gtcode.xyz/clipboard-api"
@@ -26,6 +35,7 @@ final class CloudClipboardStore: ObservableObject {
         }
     }
     @Published private(set) var items: [CloudClip] = []
+    @Published private(set) var devices: [CloudDevice] = []
     @Published private(set) var status = "同步已暂停"
     @Published private(set) var isRefreshing = false
     @Published private(set) var pendingCount = 0
@@ -37,6 +47,7 @@ final class CloudClipboardStore: ObservableObject {
     private var uploading = false
     private var nextRetry = Date.distantPast
     private var pending: [PendingClip] = []
+    private var issuedTokens: Set<String> = []
     private let queueURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("com.mino.HTools/cloud-clipboard-queue.json")
     private let session = URLSession(configuration: .ephemeral)
@@ -49,6 +60,9 @@ final class CloudClipboardStore: ObservableObject {
     private struct ListResponse: Decodable {
         let items: [CloudClip]
         let retentionDays: Int
+    }
+    private struct DeviceList: Decodable {
+        let devices: [CloudDevice]
     }
 
     init() {
@@ -107,21 +121,43 @@ final class CloudClipboardStore: ObservableObject {
             token = key
             UserDefaults.standard.set(endpoint, forKey: "cloudClipboardEndpoint")
             items = []
+            devices = []
             nextRetry = .distantPast
-            Task { await refresh() }
+            Task { await refresh(); await refreshDevices() }
             toastMessage = "连接已保存"
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func copyPairing() {
-        let config = ["url": endpoint, "token": token]
-        guard !token.isEmpty, let data = try? JSONEncoder().encode(config), let text = String(data: data, encoding: .utf8) else { return }
-        let board = NSPasteboard.general
-        board.clearContents()
-        board.setString(text, forType: .string)
-        board.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
-        changeCount = board.changeCount
-        toastMessage = "配对信息已复制，请在 Android 的连接设置中粘贴"
+    func refreshDevices() async {
+        do {
+            devices = try JSONDecoder().decode(DeviceList.self, from: await request("devices")).devices
+        } catch { errorMessage = "无法读取设备列表：\(error.localizedDescription)" }
+    }
+
+    /// Issues a token for one Android device and copies its pairing info; the server only returns the token once.
+    func addDevice(name: String) async {
+        do {
+            let body = try JSONEncoder().encode(["name": name])
+            let device = try JSONDecoder().decode(CloudDevice.self, from: await request("devices", method: "POST", body: body, mime: "application/json"))
+            guard let deviceToken = device.token, let data = try? JSONEncoder().encode(["url": endpoint, "token": deviceToken]),
+                  let text = String(data: data, encoding: .utf8) else { throw failure("服务器未返回设备密钥。") }
+            issuedTokens.insert(deviceToken)
+            let board = NSPasteboard.general
+            board.clearContents()
+            board.setString(text, forType: .string)
+            board.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+            changeCount = board.changeCount
+            toastMessage = "已复制“\(device.name)”的配对信息，请在该 Android 设备的连接设置中粘贴"
+            await refreshDevices()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func revoke(_ device: CloudDevice) async {
+        do {
+            _ = try await request("devices/\(device.id)", method: "DELETE")
+            toastMessage = "已撤销“\(device.name)”"
+            await refreshDevices()
+        } catch { errorMessage = error.localizedDescription }
     }
 
     func refresh() async {
@@ -200,7 +236,8 @@ final class CloudClipboardStore: ObservableObject {
                 payload = data
             } else { return }
             // Pairing credentials should never be uploaded even if another app drops their concealed marker.
-            if clip.kind == "text", String(data: payload, encoding: .utf8)?.contains(token) == true { return }
+            if clip.kind == "text", let text = String(data: payload, encoding: .utf8),
+               ([token] + issuedTokens).contains(where: { text.contains($0) }) { return }
             try FileManager.default.createDirectory(at: queueURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try payload.write(to: payloadURL(clip.id), options: [.atomic, .completeFileProtection])
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: payloadURL(clip.id).path)

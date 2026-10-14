@@ -38,7 +38,7 @@ open dist/HTools.app
 断网时保留最新 50 条待上传记录并自动重试。
 
 Android 项目位于 [Android/Clipboard](Android/Clipboard)，在小纸夹首页点击“云端”。
-首次连接可复制 Mac 页面里的 Android 配对信息，在手机“连接”中粘贴。
+在 Mac 页面点“添加 Android 设备”，为每台手机生成独立配对信息，在手机“连接”中粘贴；可在设备列表中单独撤销。
 云端记录可复制或下载，Android 图片复制支持接收图片的应用。
 
 服务器只保留最新 50 条，超出的记录及图片自动删除。

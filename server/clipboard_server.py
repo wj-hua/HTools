@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Private clipboard API. Python standard library only (3.6+)."""
+import hashlib
 import hmac
 import json
 import os
 import re
+import secrets
 import sqlite3
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
@@ -23,11 +26,15 @@ lock = threading.Lock()
 db = sqlite3.connect(DB_PATH, check_same_thread=False)
 db.execute('PRAGMA secure_delete=ON')
 db.execute('CREATE TABLE IF NOT EXISTS items (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, kind TEXT NOT NULL, created_at INTEGER NOT NULL, content BLOB NOT NULL)')
+db.execute('CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL, last_seen INTEGER)')
 db.commit()
+
+def now():
+    return int(time.time() * 1000)
 
 def clean():
     if RETENTION_DAYS > 0:
-        db.execute('DELETE FROM items WHERE created_at < ?', (int(time.time() * 1000) - RETENTION_DAYS * 86400000,))
+        db.execute('DELETE FROM items WHERE created_at < ?', (now() - RETENTION_DAYS * 86400000,))
     db.execute('DELETE FROM items WHERE seq NOT IN (SELECT seq FROM items ORDER BY seq DESC LIMIT ?)', (LIMIT,))
 
 def metadata(row):
@@ -46,19 +53,42 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def authorized(self):
-        if not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + TOKEN):
+    def authorized(self, admin=False):
+        # CLIPBOARD_TOKEN belongs to the Mac and manages devices; each Android device has its own revocable token.
+        supplied = self.headers.get('Authorization', '')
+        if hmac.compare_digest(supplied, 'Bearer ' + TOKEN):
+            valid = True
+        elif supplied.startswith('Bearer '):
+            digest = hashlib.sha256(supplied[7:].encode('utf-8')).hexdigest()
+            with lock, db:
+                valid = db.execute('UPDATE devices SET last_seen=? WHERE token_hash=?', (now(), digest)).rowcount == 1
+            if valid and admin:
+                self.close_connection = True
+                self.reply(403, {'error': '只有 Mac 可以管理设备'})
+                return False
+        else:
+            valid = False
+        if not valid:
             self.close_connection = True
-            self.reply(401, {'error': '连接密钥不正确'})
+            self.reply(401, {'error': '连接密钥不正确或设备已被撤销'})
             return False
         self.connection.settimeout(30)
         return True
 
-    def item_id(self, content=False):
-        match = re.fullmatch(r'/items/([a-f0-9-]{36})' + ('/content' if content else ''), self.path)
+    def path_id(self, collection, suffix=''):
+        match = re.fullmatch(r'/' + collection + r'/([a-f0-9-]{36})' + suffix, self.path)
         return match.group(1) if match else None
 
+    def item_id(self, content=False):
+        return self.path_id('items', '/content' if content else '')
+
     def do_GET(self):
+        if self.path == '/devices':
+            if self.authorized(admin=True):
+                with lock, db:
+                    rows = db.execute('SELECT id, name, created_at, last_seen FROM devices ORDER BY created_at DESC').fetchall()
+                self.reply(200, {'devices': [dict(id=r[0], name=r[1], createdAt=r[2], lastSeen=r[3]) for r in rows]})
+            return
         if not self.authorized():
             return
         with lock, db:
@@ -102,12 +132,44 @@ class Handler(BaseHTTPRequestHandler):
             return
         with lock, db:
             db.execute('INSERT OR IGNORE INTO items (id, kind, created_at, content) VALUES (?, ?, ?, ?)',
-                       (item_id, 'image' if mime == 'image/png' else 'text', int(time.time() * 1000), content))
+                       (item_id, 'image' if mime == 'image/png' else 'text', now(), content))
             clean()
             row = db.execute('SELECT id, kind, created_at, content FROM items WHERE id=?', (item_id,)).fetchone()
             self.reply(200, metadata(row))
 
+    def do_POST(self):
+        if self.path != '/devices':
+            self.close_connection = True
+            self.reply(404, {'error': '接口不存在'})
+            return
+        if not self.authorized(admin=True):
+            return
+        try:
+            size = int(self.headers.get('Content-Length', '-1'))
+            if not 0 < size <= 4096:
+                raise ValueError('Invalid size')
+            name = json.loads(self.rfile.read(size).decode('utf-8'))['name'].strip()
+            if not 0 < len(name) <= 64:
+                raise ValueError('Invalid name')
+        except (ValueError, KeyError, TypeError, AttributeError, UnicodeError):
+            self.close_connection = True
+            self.reply(400, {'error': '设备名称需为 1 到 64 个字符'})
+            return
+        device = dict(id=str(uuid.uuid4()), name=name, createdAt=now(), lastSeen=None, token=secrets.token_urlsafe(32))
+        with lock, db:
+            db.execute('INSERT INTO devices (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)',
+                       (device['id'], name, hashlib.sha256(device['token'].encode('utf-8')).hexdigest(), device['createdAt']))
+        # The token is returned only once; the server keeps its hash.
+        self.reply(200, device)
+
     def do_DELETE(self):
+        device_id = self.path_id('devices')
+        if device_id:
+            if self.authorized(admin=True):
+                with lock, db:
+                    db.execute('DELETE FROM devices WHERE id=?', (device_id,))
+                self.reply(200, {'deleted': True})
+            return
         if not self.authorized():
             return
         item_id = self.item_id()
