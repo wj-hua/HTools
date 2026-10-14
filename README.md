@@ -4,7 +4,7 @@
 
 | 侧边栏 | 来源 | 说明 |
 | --- | --- | --- |
-| Token 用量 | used-token | 按小时/天/周/月/总计统计 Claude Code、Codex、agy、Cline 的 Token，含趋势图 |
+| Token 用量 | used-token | 按小时/天/周/月/总计统计 Claude Code、Codex、agy、DeepSeek Harness 的 Token，含趋势图 |
 | 进程与内存 | used-token | 页面可见时每 3 秒刷新，可结束单个或全部进程 |
 | 常用文本 | clipboard | 管理标签与文本；在任意应用按 `⌥ Space` 呼出原有的快速粘贴面板 |
 | 跨设备粘贴板 | 新增 | Mac 自动上传文本与图片至阿里云；Android 复制、下载；仅保留最新 50 条 |

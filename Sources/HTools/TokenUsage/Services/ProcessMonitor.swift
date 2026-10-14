@@ -122,7 +122,7 @@ final class ProcessMonitor: ObservableObject {
         }
         var selected = Set(rootPIDs)
         var targets = processes.filter { selected.contains($0.pid) }
-        // 只沿子进程方向查找，不能结束启动 Cline 的终端或编辑器。
+        // 只沿子进程方向查找，不能结束启动工具的终端或编辑器。
         // 先保存整个进程树，父进程退出后子进程的 PPID 会改变。
         while true {
             let children = processes.filter {
@@ -226,15 +226,6 @@ final class ProcessMonitor: ObservableObject {
             } else if binaryName == "agy" {
                 matchedTool = .agy
                 displayName = "agy"
-            } else if binaryName == "cline" || binaryName == ".cline" || binaryName == "cline-core" {
-                matchedTool = .cline
-                displayName = "cline"
-                if let args = getProcessArguments(pid: pid), args.contains("--cline-hub-daemon") {
-                    displayName = "cline (hub)"
-                    isMain = false
-                } else if binaryName == "cline-core" {
-                    isMain = false
-                }
             } else if execPath.contains("/DeepSeek Harness.app/") {
                 // Electron 应用：主进程之外还有 GPU / 网络 / 渲染等 Helper 进程。
                 matchedTool = .deepseek
@@ -257,11 +248,6 @@ final class ProcessMonitor: ObservableObject {
                         } else if lower.hasSuffix("/agy") || lower.contains("/antigravity-cli/") {
                             matchedTool = .agy
                             displayName = "\(binaryName) (agy)"
-                            isMain = false
-                            break
-                        } else if lower.hasSuffix("/cline") || lower.hasSuffix("/cline.js") || lower.contains("/node_modules/cline/") || lower.contains("/node_modules/@cline/") {
-                            matchedTool = .cline
-                            displayName = "\(binaryName) (cline)"
                             isMain = false
                             break
                         }
