@@ -48,7 +48,11 @@ enum ToolLocator {
         locate(named: "ffmpeg")
     }
 
-    static func apkInspector() -> (url: URL, kind: APKInspectorKind)? {
+    static func zstd() -> URL? {
+        locate(named: "zstd")
+    }
+
+    static func apkInspector() ->(url: URL, kind: APKInspectorKind)? {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let sdkRoots = [
             ProcessInfo.processInfo.environment["ANDROID_SDK_ROOT"],

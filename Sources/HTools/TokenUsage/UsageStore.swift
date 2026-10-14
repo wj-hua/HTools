@@ -78,6 +78,7 @@ final class UsageStore: ObservableObject {
             all.append(contentsOf: CodexParser.parseAll())
             all.append(contentsOf: AgyParser.parseAll())
             all.append(contentsOf: ClineParser.parseAll())
+            all.append(contentsOf: DeepSeekHarnessParser.parseAll())
             UsageFileCache.shared.save()
 
             // Drop repeated requests from copied session histories before bucketing.

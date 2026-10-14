@@ -235,6 +235,10 @@ final class ProcessMonitor: ObservableObject {
                 } else if binaryName == "cline-core" {
                     isMain = false
                 }
+            } else if execPath.contains("/DeepSeek Harness.app/") {
+                // Electron 应用：主进程之外还有 GPU / 网络 / 渲染等 Helper 进程。
+                matchedTool = .deepseek
+                isMain = execPath.hasSuffix("/Contents/MacOS/DeepSeek Harness")
             } else if isScriptInterpreter(binaryName) {
                 // Script interpreter: inspect process arguments
                 if let args = getProcessArguments(pid: pid), args.count > 1 {
