@@ -17,6 +17,8 @@ final class DeviceController: ObservableObject {
     /// 页面内嵌的投屏（Android 视频流 / 鸿蒙截图预览）。
     let mirror = DeviceMirror()
     private var mirrorObservation: AnyCancellable?
+    /// 用户手动切换过设备后，不再自动改选 ADB 设备。
+    private var isManualSelection = false
 
     @Published private(set) var devices: [ADBDevice] = []
     @Published private(set) var developerState = DeveloperOptionState(layoutBounds: false, overdraw: false, pointerLocation: false)
@@ -108,12 +110,15 @@ final class DeviceController: ObservableObject {
             if let mirrored = mirror.device, !connected.contains(where: { $0.identifier == mirrored.identifier }) {
                 mirror.stop()
             }
-            if let selected = adb.selectedDeviceID,
-               !connected.contains(where: { $0.identifier == selected }),
-               let first = connected.first {
-                adb.selectDevice(first)
-            } else if adb.selectedDeviceID == nil, let first = connected.first {
-                adb.selectDevice(first)
+            // 默认展示 ADB 设备（列表已按 ADB 在前排序）；手动选择的设备在线时保持不变。
+            let isSelectedConnected = adb.selectedDeviceID.map { selected in
+                connected.contains { $0.identifier == selected }
+            } ?? false
+            if let preferred = connected.first,
+               !isSelectedConnected || (!isManualSelection && adb.selectedDeviceID?.bridge != preferred.bridge) {
+                if mirror.device?.identifier != preferred.identifier { mirror.stop() }
+                adb.selectDevice(preferred)
+                isManualSelection = false
             }
             if connected.isEmpty {
                 foregroundPackage = nil
@@ -132,6 +137,7 @@ final class DeviceController: ObservableObject {
         guard let adb, device.state == .device else { return }
         if mirror.device?.identifier != device.identifier { mirror.stop() }
         adb.selectDevice(device)
+        isManualSelection = true
         foregroundPackage = nil
         deviceInfo = nil
         objectWillChange.send()
