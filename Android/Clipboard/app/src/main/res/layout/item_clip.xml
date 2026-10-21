@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/bg_card" android:paddingHorizontal="14dp" android:paddingVertical="8dp" android:descendantFocusability="blocksDescendants">
+    <TextView android:id="@+id/clip_content" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="15sp" android:textColor="@color/ink" android:lineSpacingExtra="1dp" android:maxLines="2" android:ellipsize="end" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:gravity="center_vertical">
+        <TextView android:id="@+id/clip_meta" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="12sp" android:textColor="@color/muted" android:maxLines="1" android:ellipsize="end" />
+        <Button android:id="@+id/copy" style="@style/QuietButton" android:layout_width="wrap_content" android:minWidth="80dp" android:layout_height="wrap_content" android:maxLines="1" android:paddingHorizontal="8dp" android:drawableStart="@drawable/ic_copy" android:drawablePadding="5dp" android:background="@drawable/bg_control" android:textSize="13sp" android:text="@string/copy" />
+        <ImageButton android:id="@+id/more" android:layout_width="48dp" android:layout_height="48dp" android:background="?android:attr/selectableItemBackgroundBorderless" android:src="@drawable/ic_more" android:contentDescription="@string/more" />
+    </LinearLayout>
+</LinearLayout>

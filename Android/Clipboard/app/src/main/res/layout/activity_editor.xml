@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="68dp" android:paddingHorizontal="16dp" android:paddingVertical="8dp" android:gravity="center_vertical">
+        <ImageButton android:id="@+id/back" android:layout_width="48dp" android:layout_height="48dp" android:background="?android:attr/selectableItemBackgroundBorderless" android:src="@drawable/ic_back" android:contentDescription="@string/back" />
+        <TextView android:id="@+id/editor_heading" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="4dp" android:text="@string/new_title" android:textColor="@color/ink" android:textSize="20sp" android:maxLines="1" android:ellipsize="end" android:fontFamily="sans-serif-medium" />
+        <Button android:id="@+id/save" style="@style/PrimaryButton" android:layout_width="wrap_content" android:minWidth="80dp" android:layout_height="wrap_content" android:text="@string/save" />
+    </LinearLayout>
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:clipToPadding="false" android:paddingHorizontal="16dp" android:paddingBottom="24dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center_vertical">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/content_label" android:textSize="14sp" android:textColor="@color/muted" />
+                <Button android:id="@+id/paste" style="@style/QuietButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/paste" />
+            </LinearLayout>
+            <EditText android:id="@+id/content_input" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="300dp" android:background="@drawable/bg_field" android:padding="16dp" android:gravity="top|start" android:textColor="@color/ink" android:textColorHint="@color/muted" android:textSize="16sp" android:hint="@string/content_hint" android:inputType="textCapSentences|textMultiLine" android:maxLength="100000" android:lineSpacingExtra="5dp" android:autofillHints="" />
+            <TextView android:id="@+id/character_count" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="end" android:textSize="12sp" android:textColor="@color/muted" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="@string/editor_note" android:textSize="13sp" android:textColor="@color/muted" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>
