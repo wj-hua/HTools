@@ -6,6 +6,7 @@ struct DevicesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isDropTargeted = false
     @State private var isImportingPackage = false
+    @State private var isInspectingNetwork = false
 
     var body: some View {
         Group {
@@ -41,6 +42,11 @@ struct DevicesView: View {
         }
         .sheet(item: Binding(get: { controller.qrPairing }, set: { if $0 == nil { controller.cancelQRPairing() } })) { pairing in
             QRPairingSheet(image: pairing.image) { controller.cancelQRPairing() }
+        }
+        .sheet(isPresented: $isInspectingNetwork) {
+            if let device, let adb = controller.adb {
+                StethoView(device: device, adb: adb, preferredProcess: controller.foregroundPackage)
+            }
         }
         .fileImporter(
             isPresented: $isImportingPackage,
@@ -101,6 +107,7 @@ struct DevicesView: View {
                         quickActions
                         currentAppCard
                         if isADB {
+                            networkCard
                             developerCard
                             displayCard
                         }
@@ -247,6 +254,25 @@ struct DevicesView: View {
                 Text("也可以把安装包直接拖进这个窗口安装")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var networkCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeader("网络抓包", systemImage: "network")
+                Text("查看已集成 Stetho 的应用发出的 HTTP / HTTPS 请求、请求头和响应正文。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Label("USB / 无线 ADB", systemImage: "cable.connector")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("打开 Stetho 抓包") { isInspectingNetwork = true }
+                        .disabled(device?.state != .device)
+                }
             }
         }
     }

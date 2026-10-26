@@ -55,6 +55,16 @@ Android 项目位于 [Android/Clipboard](Android/Clipboard)，在小纸夹首页
 在翻译页点模型名 → “接口设置…”管理接口：支持多组 OpenAI 兼容 Chat Completions 配置、每组多个模型、流式输出和推理强度。
 API Key 只存 Keychain（沿用 HTranslate 的 `com.mino.HTranslate.api-key`），首次运行会自动导入 HTranslate 已保存的配置。
 
+## Stetho 网络抓包
+
+在“手机调试”中连接 Android 设备，点击“打开 Stetho 抓包”，选择应用 / 进程后开始抓包，再操作手机上的应用。
+支持 USB 和无线 ADB，可筛选 URL、方法与状态码，查看请求头、请求正文、响应正文（JSON 自动格式化），以及复制 URL 和 cURL。
+
+手机应用需已初始化 Stetho，并接入相应的网络拦截器（例如 OkHttp 的 StethoInterceptor）；无需设置代理或安装证书。
+只记录开始抓包后、通过 Stetho 上报的 HTTP / HTTPS 请求，最近 500 条保留在内存中；开始新一轮抓包会清空旧记录。
+响应正文在选中“响应正文”时读取，请在停止抓包前查看。单条响应正文上限为 1 MB，正文缓存合计最多 16 MB。
+关闭抓包窗口会断开连接并清理该会话创建的 ADB 端口转发。
+
 ## 散热背夹
 
 打开侧边栏“散热背夹”，HTools 会搜索附近的背夹，点“连接”即可；之后进入页面会自动连上次的背夹。
