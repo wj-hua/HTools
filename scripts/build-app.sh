@@ -55,6 +55,22 @@ fi
 /bin/cp "$project_root/AppResources/Info.plist" "$contents_dir/Info.plist"
 /bin/cp "$project_root/AppResources/AppIcon.icns" "$contents_dir/Resources/AppIcon.icns"
 
+# Finder 右键菜单的后台助手（无界面），执行扩展发来的文件操作。
+finder_helper_dir="$contents_dir/Library/HToolsFinderHelper.app"
+/bin/mkdir -p "$finder_helper_dir/Contents/MacOS"
+/bin/cp "$project_root/.build/release/HToolsFinderHelper" "$finder_helper_dir/Contents/MacOS/HToolsFinderHelper"
+/bin/cp "$project_root/AppResources/FinderHelper/Info.plist" "$finder_helper_dir/Contents/Info.plist"
+/usr/bin/codesign --force --sign "$sign_identity" --timestamp=none "$finder_helper_dir"
+
+# Finder 右键菜单扩展，必须先签名再签主 App。Finder Sync 扩展必须沙盒化（否则不会被系统加载）。
+finder_appex_dir="$contents_dir/PlugIns/HToolsFinder.appex"
+/bin/mkdir -p "$finder_appex_dir/Contents/MacOS"
+/bin/cp "$project_root/.build/release/HToolsFinder" "$finder_appex_dir/Contents/MacOS/HToolsFinder"
+/bin/cp "$project_root/AppResources/FinderExtension/Info.plist" "$finder_appex_dir/Contents/Info.plist"
+/usr/bin/codesign --force --sign "$sign_identity" \
+    --entitlements "$project_root/AppResources/FinderExtension/HToolsFinder.entitlements" \
+    --timestamp=none "$finder_appex_dir"
+
 # 不用 --deep（已废弃且对单可执行文件的 bundle 没有必要）。
 /usr/bin/codesign --force --sign "$sign_identity" --timestamp=none "$app_dir"
 

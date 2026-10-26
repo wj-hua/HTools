@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh_CN</string>
+	<key>CFBundleExecutable</key>
+	<string>HToolsFinderHelper</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.mino.htools.FinderHelper</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>HToolsFinderHelper</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.mino.htools.FinderHelper</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>htools</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>HTools 右键菜单需要访问“文稿”，以便在其中新建文件或在终端中打开。</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>HTools 右键菜单需要访问“桌面”，以便在其中新建文件或在终端中打开。</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>HTools 右键菜单需要访问“下载”，以便在其中新建文件或在终端中打开。</string>
+</dict>
+</plist>

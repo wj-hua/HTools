@@ -8,6 +8,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case snip
     case translate
     case tasks
+    case finderMenu
     case devices
     case cooler
     case distribution
@@ -23,6 +24,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .snip: return "截图"
         case .translate: return "翻译"
         case .tasks: return "任务清单"
+        case .finderMenu: return "右键菜单"
         case .devices: return "手机调试"
         case .cooler: return "散热背夹"
         case .distribution: return "蒲公英分发"
@@ -38,6 +40,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .snip: return "camera.viewfinder"
         case .translate: return "translate"
         case .tasks: return "checklist"
+        case .finderMenu: return "cursorarrow.click.2"
         case .devices: return "iphone.gen3"
         case .cooler: return "fan"
         case .distribution: return "paperplane"
@@ -86,6 +89,8 @@ struct RootView: View {
             TranslateView(translator: model.translator, snip: model.snip)
         case .tasks:
             TasksView(store: model.taskStore)
+        case .finderMenu:
+            FinderMenuView()
         case .devices:
             DevicesView()
         case .cooler:
@@ -115,6 +120,7 @@ private struct SidebarView: View {
                 row(.snip, badge: snip.pins.count)
                 row(.translate)
                 row(.tasks, badge: taskStore.pendingCount)
+                row(.finderMenu)
             }
             Section("移动设备") {
                 row(.devices, badge: devices.connectedCount)
