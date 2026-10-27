@@ -12,6 +12,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case devices
     case cooler
     case distribution
+    case sleep
 
     var id: String { rawValue }
 
@@ -28,6 +29,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .devices: return "手机调试"
         case .cooler: return "散热背夹"
         case .distribution: return "蒲公英分发"
+        case .sleep: return "防止休眠"
         }
     }
 
@@ -44,6 +46,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .devices: return "iphone.gen3"
         case .cooler: return "fan"
         case .distribution: return "paperplane"
+        case .sleep: return "moon.zzz"
         }
     }
 }
@@ -97,6 +100,8 @@ struct RootView: View {
             CoolerView(cooler: model.cooler)
         case .distribution:
             DistributionView(uploader: model.pgyerUploader)
+        case .sleep:
+            SleepView()
         }
     }
 }
@@ -121,6 +126,7 @@ private struct SidebarView: View {
                 row(.translate)
                 row(.tasks, badge: taskStore.pendingCount)
                 row(.finderMenu)
+                row(.sleep)
             }
             Section("移动设备") {
                 row(.devices, badge: devices.connectedCount)
