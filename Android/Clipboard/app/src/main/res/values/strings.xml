@@ -55,6 +55,15 @@
     <string name="home_scan_message">扫描二维码和条形码，也可以识别相册图片</string>
     <string name="home_clip_title">粘贴板</string>
     <string name="home_clip_message">保存常用文字和链接，一键复制</string>
+    <string name="home_hcode_title">HCode</string>
+    <string name="home_hcode_message">打开电脑上的 HCode 远程操控</string>
+    <string name="hcode_address">连接地址</string>
+    <string name="hcode_address_message">请输入电脑端 HCode 远程操控的 HTTPS 地址。</string>
+    <string name="hcode_address_invalid">请输入有效的 HTTPS 地址</string>
+    <string name="hcode_password_hint">访问口令（可选，保存后自动登录）</string>
+    <string name="hcode_password_save_failed">无法安全保存口令，请重试</string>
+    <string name="hcode_connect">连接</string>
+    <string name="hcode_reload">刷新</string>
     <string name="cloud_title">跨设备粘贴板</string>
     <string name="cloud_unpaired">请点右上角“连接”，粘贴 Mac 配对信息</string>
     <string name="cloud_count">共 %1$d 条 · 保留最新 50 条%2$s</string>

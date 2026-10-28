@@ -13,5 +13,6 @@ public final class HomeActivity extends Activity {
         Ui.applyInsets(this);
         findViewById(R.id.scan_card).setOnClickListener(view -> startActivity(new Intent(this, ScanActivity.class)));
         findViewById(R.id.clip_card).setOnClickListener(view -> startActivity(new Intent(this, MainActivity.class)));
+        findViewById(R.id.hcode_card).setOnClickListener(view -> startActivity(new Intent(this, HCodeActivity.class)));
     }
 }
