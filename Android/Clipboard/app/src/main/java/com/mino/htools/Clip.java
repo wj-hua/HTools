@@ -1,4 +1,4 @@
-package com.mino.clipboard;
+package com.mino.htools;
 
 final class Clip {
     final long id;

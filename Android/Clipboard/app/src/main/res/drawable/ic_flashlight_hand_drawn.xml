@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <!-- Simple hand-drawn flashlight silhouette. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M11,12 Q16,13 21,12 L19,16 L19,25 Q19,27 17,27 L15,27 Q13,27 13,25 L13,16 Z" />
+    <path
+        android:strokeColor="#FFD93D"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M16,8 L16,4" />
+    <path
+        android:strokeColor="#FFD93D"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M11.5,9 L8.8,6.3" />
+    <path
+        android:strokeColor="#FFD93D"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M20.5,9 L23.2,6.3" />
+</vector>

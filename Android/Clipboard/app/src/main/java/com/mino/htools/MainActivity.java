@@ -1,4 +1,4 @@
-package com.mino.clipboard;
+package com.mino.htools;
 
 import android.app.Activity;
 import android.app.AlertDialog;

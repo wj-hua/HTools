@@ -1,4 +1,4 @@
-package com.mino.clipboard;
+package com.mino.htools;
 
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -69,7 +69,7 @@ final class CloudMediaCache {
         try (var cursor = resolver.query(uri, new String[]{MediaStore.Images.Media.RELATIVE_PATH,
                 MediaStore.Images.Media.OWNER_PACKAGE_NAME}, null, null, null)) {
             return cursor != null && cursor.moveToFirst() && PATH.equals(cursor.getString(0))
-                    && "com.mino.clipboard".equals(cursor.getString(1));
+                    && "com.mino.htools".equals(cursor.getString(1));
         } catch (RuntimeException ignored) { return false; }
     }
 }

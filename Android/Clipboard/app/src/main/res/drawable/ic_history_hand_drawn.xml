@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Hand-drawn clock/history icon -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M12,4 Q16.5,4.2 19.5,7.2 Q22.2,10.2 22,14.5 Q21.8,18.5 19,21 Q15.8,23.5 12,23 Q8.2,22.5 5.5,19.8 Q3,17 3,13 Q3.2,9.5 5.5,7 Q7.5,5 10,4.5" />
+    <!-- Clock hands -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M12,7 L12,12.5 L16,14.5" />
+    <!-- Arrow indicating history/rotation -->
+    <path
+        android:strokeColor="#4CAF50"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M10,4.5 L7,4 L7.5,7" />
+</vector>
