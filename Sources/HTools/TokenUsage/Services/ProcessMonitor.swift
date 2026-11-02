@@ -187,7 +187,7 @@ final class ProcessMonitor: ObservableObject {
 
     // MARK: - Process Scanning (Darwin Low-Level APIs)
 
-    nonisolated private static func scanProcesses() -> [ToolProcessItem] {
+    nonisolated static func scanProcesses() -> [ToolProcessItem] {
         let pids = allProcessIDs()
         let currentUid = getuid()
         var pathBuffer = [CChar](repeating: 0, count: 4096)

@@ -5,8 +5,9 @@ final class ADBService {
     let adbExecutable: URL?
     let hdcExecutable: URL?
     private(set) var selectedDeviceID: DeviceIdentifier?
+    private let requireSelectedDevice: Bool
 
-    init() throws {
+    init(requireSelectedDevice: Bool = false) throws {
         let adbExecutable = ToolLocator.adb()
         let hdcExecutable = ToolLocator.hdc()
         guard adbExecutable != nil || hdcExecutable != nil else {
@@ -14,6 +15,7 @@ final class ADBService {
         }
         self.adbExecutable = adbExecutable
         self.hdcExecutable = hdcExecutable
+        self.requireSelectedDevice = requireSelectedDevice
     }
 
     var hasADB: Bool { adbExecutable != nil }
@@ -90,6 +92,7 @@ final class ADBService {
            }) {
             return selected
         }
+        if requireSelectedDevice, selectedDeviceID != nil { throw ADBBarError.noDevice }
         guard let device = devices.first(where: { $0.state == .device }) else {
             throw ADBBarError.noDevice
         }
@@ -525,7 +528,7 @@ final class ADBService {
         let device = try await activeDevice()
         let fileExtension = fileURL.pathExtension.lowercased()
         let supportedExtensions = device.bridge == .adb
-            ? Set(["apk"])
+            ? Set(["apk", "aab"])
             : Set(["hap", "hsp", "app"])
         guard supportedExtensions.contains(fileExtension) else {
             let expected = supportedExtensions.sorted().map { ".\($0)" }.joined(separator: "、")
@@ -542,9 +545,17 @@ final class ADBService {
             return nil
         }
 
+        if fileExtension == "aab" {
+            try await installBundle(at: fileURL, device: device)
+            return nil
+        }
+
         let packageName = await packageName(in: fileURL)
         let result = await runOnDevice(["install", "-r", "-d", fileURL.path], device: device, timeout: CommandRunner.longTimeout)
         guard androidCommandSucceeded(result) else {
+            if result.combinedText.contains("INSTALL_FAILED_USER_RESTRICTED") {
+                throw ADBBarError.commandFailed(androidInstallRestrictedMessage)
+            }
             throw ADBBarError.commandFailed(result.combinedText)
         }
 
@@ -552,6 +563,48 @@ final class ADBService {
             try? await launchApp(packageName: packageName, device: device)
         }
         return packageName
+    }
+
+    private func installBundle(at fileURL: URL, device: ADBDevice) async throws {
+        guard let bundletool = ToolLocator.bundletool() else {
+            throw ADBBarError.commandFailed("安装 AAB 需要 bundletool 和 Java。请先运行 brew install bundletool。")
+        }
+        guard let adbExecutable else { throw ADBBarError.adbNotFound }
+
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HTools-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        let archive = temporaryDirectory.appendingPathComponent("app.apks")
+        let deviceArguments = ["--adb=\(adbExecutable.path)", "--device-id=\(device.serial)"]
+        let build = await CommandRunner.run(
+            executable: bundletool,
+            arguments: ["build-apks", "--bundle=\(fileURL.path)", "--output=\(archive.path)", "--connected-device"] + deviceArguments,
+            timeout: CommandRunner.longTimeout
+        )
+        guard build.status == 0 else {
+            throw ADBBarError.commandFailed("生成 APK 失败：\n\(build.combinedText)")
+        }
+        if build.combinedText.contains("The APKs won't be signed") {
+            throw ADBBarError.commandFailed("未找到 Android 调试签名密钥，生成的 APK 无法安装。请先使用 Android Studio 构建一次调试版应用以生成密钥。")
+        }
+        let install = await CommandRunner.run(
+            executable: bundletool,
+            arguments: ["install-apks", "--apks=\(archive.path)", "--allow-downgrade"] + deviceArguments,
+            timeout: CommandRunner.longTimeout
+        )
+        guard install.status == 0 else {
+            if install.combinedText.contains("INSTALL_FAILED_USER_RESTRICTED") {
+                throw ADBBarError.commandFailed(androidInstallRestrictedMessage)
+            }
+            let signatureHint = install.combinedText.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE")
+                ? "\n设备上的应用与调试签名不一致。卸载已有应用后才能安装，卸载会删除其数据。" : ""
+            throw ADBBarError.commandFailed("安装 AAB 失败：\n\(install.combinedText)\(signatureHint)")
+        }
+    }
+
+    private var androidInstallRestrictedMessage: String {
+        "手机拒绝了安装。请解锁手机，检查并确认安装提示。小米手机请在“设置 → 更多设置 → 开发者选项”中打开“USB 安装”，然后重试。"
     }
 
     func androidRecordingContext() async throws -> (executable: URL, serial: String) {

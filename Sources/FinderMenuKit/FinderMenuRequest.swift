@@ -63,13 +63,31 @@ public enum FinderMenuRequest: Equatable {
             completion()
 
         case let .openApp(bundleID, urls):
-            guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            guard let app = OpenWithApp.all.first(where: { $0.bundleID == bundleID }),
+                  let appURL = OpenWithApp.url(of: app) else {
                 completion()
                 return
             }
-            let opensFolderOnly = OpenWithApp.all.first { $0.bundleID == bundleID }?.opensFolderOnly ?? false
-            let targets = opensFolderOnly ? Array(Set(urls.map(Self.folder(containing:)))) : urls
-            NSWorkspace.shared.open(targets, withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
+            if bundleID == "com.mino.hcode.local", !FileManager.default.fileExists(atPath: appURL.path) {
+                completion()
+                return
+            }
+            let targets = app.opensFolderOnly ? Array(Set(urls.map(Self.folder(containing:)))) : urls
+            let openURLs: [URL]
+            if bundleID == "com.mino.hcode" || bundleID == "com.mino.hcode.local" {
+                openURLs = targets.compactMap { target in
+                    var components = URLComponents()
+                    components.scheme = "hcode"
+                    components.host = "open-project"
+                    let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "+&="))
+                    guard let path = target.path.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+                    components.percentEncodedQuery = "path=\(path)"
+                    return components.url
+                }
+            } else {
+                openURLs = targets
+            }
+            NSWorkspace.shared.open(openURLs, withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
                 completion()
             }
         }

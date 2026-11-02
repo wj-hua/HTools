@@ -52,6 +52,10 @@ enum ToolLocator {
         locate(named: "zstd")
     }
 
+    static func bundletool() -> URL? {
+        locate(named: "bundletool")
+    }
+
     static func apkInspector() ->(url: URL, kind: APKInspectorKind)? {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let sdkRoots = [

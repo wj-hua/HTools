@@ -178,7 +178,7 @@ final class TaskStore: ObservableObject {
         }
     }
 
-    private static func defaultFileURL(fileManager: FileManager) -> URL {
+    static func defaultFileURL(fileManager: FileManager) -> URL {
         fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("com.mino.htools", isDirectory: true)
             .appendingPathComponent("tasks.json", isDirectory: false)

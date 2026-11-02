@@ -1,6 +1,7 @@
 import AppKit
 import FinderMenuKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 右键菜单页：配置访达右键菜单里的“新建文件”“拷贝路径”和“在 X 打开”。
 /// 配置即时写入扩展偏好域，下一次右键即生效，无需重启 Finder。
@@ -36,6 +37,28 @@ struct FinderMenuView: View {
                                     Image(nsImage: nsImage(for: app))
                                 }
                             }
+                        }
+                        Divider()
+                        Toggle("在 Local HCode 打开", isOn: localHcodeBinding)
+                            .disabled(config.localHcodePath == nil)
+                        HStack {
+                            Text(config.localHcodePath ?? "尚未选择 Local HCode")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .textSelection(.enabled)
+                            Spacer()
+                            Button(config.localHcodePath == nil ? "选择应用…" : "更改…") {
+                                chooseLocalHcode()
+                            }
+                            if config.localHcodePath != nil {
+                                Button("清除") { config.localHcodePath = nil }
+                            }
+                        }
+                        if let path = config.localHcodePath, !FileManager.default.fileExists(atPath: path) {
+                            Text("找不到所选应用，请重新选择。")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -106,6 +129,32 @@ struct FinderMenuView: View {
                 }
             }
         )
+    }
+
+    private var localHcodeBinding: Binding<Bool> {
+        Binding(
+            get: { config.openApps.contains("com.mino.hcode.local") },
+            set: { isOn in
+                if isOn {
+                    config.openApps.insert("com.mino.hcode.local")
+                } else {
+                    config.openApps.remove("com.mino.hcode.local")
+                }
+            }
+        )
+    }
+
+    private func chooseLocalHcode() {
+        let panel = NSOpenPanel()
+        panel.message = "选择 Local HCode 应用"
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            config.localHcodePath = url.path
+            config.openApps.insert("com.mino.hcode.local")
+        }
     }
 
     private func nsImage(for app: OpenWithApp) -> NSImage {

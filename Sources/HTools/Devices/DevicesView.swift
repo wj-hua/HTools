@@ -124,15 +124,7 @@ struct DevicesView: View {
     }
 
     private func install(_ url: URL) {
-        let accessing = url.startAccessingSecurityScopedResource()
         controller.install(url)
-        if accessing {
-            // 安装命令在后台读取文件，稍后再释放访问权限。
-            Task {
-                try? await Task.sleep(for: .seconds(120))
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
     }
 
     // MARK: - 设备选择
@@ -231,7 +223,7 @@ struct DevicesView: View {
                     }
                     ActionTile(
                         title: "安装",
-                        subtitle: device?.bridge == .hdc ? "HAP / APP" : "APK",
+                        subtitle: device?.bridge == .hdc ? "HAP / APP" : "APK / AAB",
                         systemImage: "square.and.arrow.down.fill",
                         tint: .green
                     ) {

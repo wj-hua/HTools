@@ -71,14 +71,14 @@ final class UsageStore: ObservableObject {
         refresh()
     }
 
-    private static func loadAllData() async -> (events: [UsageEvent], tools: Set<Tool>, buckets: [Granularity: [UsageBucket]]) {
+    static func loadAllData(saveCache: Bool = true) async -> (events: [UsageEvent], tools: Set<Tool>, buckets: [Granularity: [UsageBucket]]) {
         await Task.detached(priority: .userInitiated) {
             var all: [UsageEvent] = []
             all.append(contentsOf: ClaudeCodeParser.parseAll())
             all.append(contentsOf: CodexParser.parseAll())
             all.append(contentsOf: AgyParser.parseAll())
             all.append(contentsOf: DeepSeekHarnessParser.parseAll())
-            UsageFileCache.shared.save()
+            if saveCache { UsageFileCache.shared.save() }
 
             // Drop repeated requests from copied session histories before bucketing.
             var seenRequestIDs = Set<String>()

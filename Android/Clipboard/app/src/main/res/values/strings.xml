@@ -57,6 +57,10 @@
     <string name="home_clip_message">保存常用文字和链接，一键复制</string>
     <string name="home_hcode_title">HCode</string>
     <string name="home_hcode_message">打开电脑上的 HCode 远程操控</string>
+    <string name="home_zcode_title">ZCode</string>
+    <string name="home_zcode_message">打开 ZCode 远程操控</string>
+    <string name="zcode_address_message">请输入 ZCode 远程操控的 HTTPS 地址。</string>
+    <string name="zcode_address_save_failed">无法安全保存地址，请重试</string>
     <string name="hcode_address">连接地址</string>
     <string name="hcode_address_message">请输入电脑端 HCode 远程操控的 HTTPS 地址。</string>
     <string name="hcode_address_invalid">请输入有效的 HTTPS 地址</string>

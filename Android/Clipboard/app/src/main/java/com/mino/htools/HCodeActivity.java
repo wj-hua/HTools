@@ -19,6 +19,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import org.json.JSONObject;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -30,6 +31,7 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.net.ssl.HttpsURLConnection;
 
 public final class HCodeActivity extends Activity {
+    static final String EXTRA_ZCODE = "zcode";
     private static final int FILE_REQUEST = 1;
     private WebView webView;
     private SharedPreferences preferences;
@@ -40,12 +42,18 @@ public final class HCodeActivity extends Activity {
         setContentView(R.layout.activity_hcode);
         Ui.applyInsets(this);
         preferences = getSharedPreferences("hcode", MODE_PRIVATE);
+        boolean zcode = getIntent().getBooleanExtra(EXTRA_ZCODE, false);
         webView = findViewById(R.id.hcode_webview);
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
+        if (zcode) {
+            ((TextView) findViewById(R.id.hcode_title)).setText(R.string.home_zcode_title);
+            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+        }
         webView.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
+                if (zcode && ("https".equalsIgnoreCase(url.getScheme()) || "http".equalsIgnoreCase(url.getScheme()))) return false;
                 Uri address = Uri.parse(preferences.getString("address", ""));
                 if ("https".equalsIgnoreCase(url.getScheme()) && url.getHost() != null
                         && url.getHost().equalsIgnoreCase(address.getHost()) && url.getPort() == address.getPort()) return false;
@@ -70,10 +78,52 @@ public final class HCodeActivity extends Activity {
         });
         findViewById(R.id.hcode_back).setOnClickListener(v -> navigateBack());
         findViewById(R.id.hcode_reload).setOnClickListener(v -> webView.reload());
-        findViewById(R.id.hcode_settings).setOnClickListener(v -> showAddressDialog());
+        findViewById(R.id.hcode_settings).setOnClickListener(v -> { if (zcode) showZCodeAddressDialog(); else showAddressDialog(); });
+        if (zcode) {
+            if (savedInstanceState != null && webView.restoreState(savedInstanceState) != null) return;
+            String address = readZCodeAddress();
+            if (address.isEmpty()) showZCodeAddressDialog(); else webView.loadUrl(address);
+            return;
+        }
         String address = preferences.getString("address", "");
         if (savedInstanceState != null && webView.restoreState(savedInstanceState) != null) return;
         if (address.isEmpty()) showAddressDialog(); else openAddress(address);
+    }
+
+    private String readZCodeAddress() {
+        try { return readEncrypted("zcode_address"); } catch (Exception e) { return ""; }
+    }
+
+    private void showZCodeAddressDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        input.setHint("https://");
+        input.setText(readZCodeAddress());
+        LinearLayout container = new LinearLayout(this);
+        int padding = (int) (24 * getResources().getDisplayMetrics().density);
+        container.setPadding(padding, 0, padding, 0);
+        container.addView(input, new LinearLayout.LayoutParams(-1, -2));
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.hcode_address)
+                .setMessage(R.string.zcode_address_message).setView(container)
+                .setNegativeButton(R.string.cancel, (d, which) -> { if (readZCodeAddress().isEmpty()) finish(); })
+                .setPositiveButton(R.string.hcode_connect, null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String address = input.getText().toString().trim();
+            Uri uri = Uri.parse(address);
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null) {
+                input.setError(getString(R.string.hcode_address_invalid));
+                return;
+            }
+            try { saveEncrypted("zcode_address", address); } catch (Exception e) {
+                input.setError(getString(R.string.zcode_address_save_failed));
+                return;
+            }
+            webView.loadUrl(address);
+            dialog.dismiss();
+        }));
+        dialog.setOnCancelListener(ignored -> { if (readZCodeAddress().isEmpty()) finish(); });
+        dialog.show();
     }
 
     private void showAddressDialog() {
@@ -135,10 +185,14 @@ public final class HCodeActivity extends Activity {
     }
 
     private void saveToken(String token) throws Exception {
+        saveEncrypted("token", token);
+    }
+
+    private void saveEncrypted(String prefix, String value) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, tokenKey());
-        preferences.edit().putString("token_iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
-                .putString("token_ciphertext", Base64.encodeToString(cipher.doFinal(token.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP)).apply();
+        preferences.edit().putString(prefix + "_iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
+                .putString(prefix + "_ciphertext", Base64.encodeToString(cipher.doFinal(value.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP)).apply();
     }
 
     private void clearToken() {
@@ -146,8 +200,12 @@ public final class HCodeActivity extends Activity {
     }
 
     private String readToken() throws Exception {
-        String iv = preferences.getString("token_iv", "");
-        String encrypted = preferences.getString("token_ciphertext", "");
+        return readEncrypted("token");
+    }
+
+    private String readEncrypted(String prefix) throws Exception {
+        String iv = preferences.getString(prefix + "_iv", "");
+        String encrypted = preferences.getString(prefix + "_ciphertext", "");
         if (iv.isEmpty() || encrypted.isEmpty()) return "";
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, tokenKey(), new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)));

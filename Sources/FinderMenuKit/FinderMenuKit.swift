@@ -17,8 +17,12 @@ public struct FinderMenuConfig: Codable, Equatable {
 
     public var showNewFile = true
     public var showCopyPath = true
-    /// 勾选的“在 X 打开”应用，存 bundle ID。
-    public var openApps: Set<String> = ["com.apple.Terminal", "com.sublimetext.4", "abnerworks.Typora"]
+    /// 勾选的“在 X 打开”目标标识。
+    public var openApps: Set<String> = ["com.apple.Terminal", "com.sublimetext.4", "abnerworks.Typora", "com.mino.hcode", "com.mino.hcode.local"]
+    /// 旧配置首次读取时启用 HCode；保存后仍可在设置中关闭。
+    public var hcodeDefaultAdded: Bool? = true
+    public var localHcodeDefaultAdded: Bool? = true
+    public var localHcodePath: String? = nil
     public var templates: [Template] = [Template(name: "未命名", ext: "txt"), Template(name: "未命名", ext: "md")]
 
     public init() {}
@@ -36,8 +40,16 @@ public enum FinderMenuConfigStore {
 
     public static func load() -> FinderMenuConfig {
         guard let data = try? Data(contentsOf: fileURL),
-              let config = try? JSONDecoder().decode(FinderMenuConfig.self, from: data)
+              var config = try? JSONDecoder().decode(FinderMenuConfig.self, from: data)
         else { return FinderMenuConfig() }
+        if config.hcodeDefaultAdded == nil {
+            config.openApps.insert("com.mino.hcode")
+            config.hcodeDefaultAdded = true
+        }
+        if config.localHcodeDefaultAdded == nil {
+            config.openApps.insert("com.mino.hcode.local")
+            config.localHcodeDefaultAdded = true
+        }
         return config
     }
 
@@ -60,16 +72,23 @@ public struct OpenWithApp: Equatable {
         OpenWithApp(bundleID: "com.apple.Terminal", name: "Terminal", opensFolderOnly: true),
         OpenWithApp(bundleID: "com.googlecode.iterm2", name: "iTerm2", opensFolderOnly: true),
         OpenWithApp(bundleID: "com.microsoft.VSCode", name: "VSCode", opensFolderOnly: false),
+        OpenWithApp(bundleID: "com.mino.hcode", name: "HCode", opensFolderOnly: true),
+        OpenWithApp(bundleID: "com.mino.hcode.local", name: "Local HCode", opensFolderOnly: true),
         OpenWithApp(bundleID: "com.sublimetext.4", name: "Sublime", opensFolderOnly: false),
         OpenWithApp(bundleID: "abnerworks.Typora", name: "Typora", opensFolderOnly: false),
     ]
 
     /// 本机已安装的应用；未安装的不显示在设置页和右键菜单中。
     public static var installed: [OpenWithApp] {
-        all.filter { url(of: $0) != nil }
+        all.filter { $0.bundleID != "com.mino.hcode.local" && url(of: $0) != nil }
     }
 
     public static func url(of app: OpenWithApp) -> URL? {
-        NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID)
+        if app.bundleID == "com.mino.hcode.local" {
+            guard let path = FinderMenuConfigStore.load().localHcodePath, !path.isEmpty else { return nil }
+            // 沙盒扩展无法检查任意位置的应用；由非沙盒助手在实际打开时检查。
+            return URL(fileURLWithPath: path)
+        }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID)
     }
 }

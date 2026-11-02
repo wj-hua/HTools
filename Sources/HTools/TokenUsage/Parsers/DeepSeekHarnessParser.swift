@@ -41,6 +41,7 @@ enum DeepSeekHarnessParser {
         let process = Process()
         process.executableURL = zstd
         process.arguments = ["-dcq", url.path]
+        process.standardInput = FileHandle.nullDevice
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice

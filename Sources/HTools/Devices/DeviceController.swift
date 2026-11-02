@@ -395,14 +395,17 @@ final class DeviceController: ObservableObject {
 
     // MARK: - 安装
 
-    static let packageExtensions: Set<String> = ["apk", "hap", "hsp", "app"]
+    static let packageExtensions: Set<String> = ["apk", "aab", "hap", "hsp", "app"]
 
     func install(_ url: URL) {
         let isHarmonyPackage = ["hap", "hsp", "app"].contains(url.pathExtension.lowercased())
+        let isBundle = url.pathExtension.lowercased() == "aab"
         run("正在安装 \(url.lastPathComponent)…") { adb in
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
             let package = try await adb.installPackage(at: url)
             return package.map { "已安装并启动 \($0)" }
-                ?? (isHarmonyPackage ? "鸿蒙应用已安装" : "APK 已安装（未能识别启动包名）")
+                ?? (isHarmonyPackage ? "鸿蒙应用已安装" : (isBundle ? "AAB 已安装" : "APK 已安装（未能识别启动包名）"))
         }
     }
 

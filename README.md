@@ -9,8 +9,10 @@
 | 常用文本 | clipboard | 管理标签与文本；在任意应用按 `⌥ Space` 呼出原有的快速粘贴面板 |
 | 跨设备粘贴板 | 新增 | Mac 自动上传文本与图片至阿里云；Android 复制、下载；仅保留最新 50 条 |
 | 翻译 | HTranslate | 截图（`F4`）或粘贴图片，本机 Vision 识别文字，再用自己配置的 OpenAI 兼容接口翻译 |
-| 手机调试 | adb-app | ADB / HDC 设备：截屏、录屏、内嵌实时投屏（Android 可点击/拖动操作，无需 scrcpy；鸿蒙为只读预览）、安装（可直接拖入窗口）、无线连接与配对、开发者选项、前台应用 |
+| 手机调试 | adb-app | ADB / HDC 设备：截屏、录屏、内嵌实时投屏（Android 可点击/拖动操作，无需 scrcpy；鸿蒙为只读预览）、安装（Android 支持 APK / AAB，可直接拖入窗口）、无线连接与配对、开发者选项、前台应用 |
 | 散热背夹 | 新增 | 通过蓝牙控制黑鲨散热背夹：温度、制冷模式、风扇灯效、定时关闭、低温保护 |
+
+安装 AAB 需要 `bundletool` 和 Java，可通过 `brew install bundletool` 安装。生成的 APK 使用本机 Android 调试密钥；如果尚无调试密钥，可先用 Android Studio 构建一次调试版应用。手机上已有应用的签名不一致时无法覆盖安装，卸载已有应用会删除其数据。AAB 安装完成后需要手动打开应用。
 
 关闭主窗口后 App 仍在后台运行，`⌥ Space` 依然可用；点击 Dock 图标重新打开窗口，`⌘Q` 退出。
 
@@ -23,6 +25,20 @@ open dist/HTools.app
 ```
 
 必须用固定证书签名，否则每次重新构建后“辅助功能”（自动粘贴）和“本地网络”（无线 ADB）权限都会失效。可用 `HTOOLS_SIGN_IDENTITY` 指定证书。
+
+## MCP：在 HCode 中使用 HTools
+
+HTools 可作为本机只读 MCP 服务运行，无需打开图形界面。先用 `./scripts/build-app.sh` 构建，然后在 HCode 的 MCP 管理中为对应的 AI 添加命令形式的服务：
+
+- 名称：`htools`
+- 命令：`/你的/HTools.app/Contents/MacOS/HTools`（使用实际 app 的绝对路径）
+- 参数：`--mcp`
+
+例如，本项目的构建产物为 `dist/HTools.app/Contents/MacOS/HTools`，配置时请填写其绝对路径。也可用开发版 `.build/debug/HTools` 的绝对路径，但清理或移动构建目录后需要重新构建。配置后新建或重启相应 AI 会话，再询问“今天 token 用量是多少？”等问题。不同 Provider 和受限会话能否加载外部 MCP 取决于 HCode 的配置。
+
+目前提供 `get_token_usage`、`list_ai_processes`、`list_tasks`、`list_devices`、`get_device_info`、`get_foreground_app` 和 `capture_device_screen`。手机截图返回 MCP 图片内容，支持 Android 和鸿蒙；实际展示和识图取决于客户端及模型是否支持图片。多台设备连接时，先用设备列表取得 ID，并在设备信息、前台应用查询或截图时指定 ID；只有一台已连接设备时可以省略。待办读取磁盘上已保存的数据，不修改任务；界面中尚未保存的编辑可能暂时不出现。
+
+用量依赖本机可读取的历史记录，DeepSeek 统计还需要 `zstd`；来源缺失或解析失败可能导致结果不完整，结果并非账单。设备列表复用 HTools 的 ADB/HDC 实现，桥接工具执行失败时可能返回空列表。MCP 服务不写入 HTools 的用量缓存，也不返回进程命令行或配置密钥。工具及后续计划见 [MCP 计划](docs/HTools-MCP计划.md)。
 
 常用文本数据沿用原路径 `~/Library/Application Support/com.mino.CommonClipboard/items.json`，无需迁移。
 

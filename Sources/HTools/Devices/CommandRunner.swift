@@ -52,6 +52,8 @@ enum CommandRunner {
 
             process.executableURL = executable
             process.arguments = arguments
+            // Device commands are non-interactive and must not consume the MCP transport.
+            process.standardInput = FileHandle.nullDevice
             process.standardOutput = stdout
             process.standardError = stderr
             if let environment {
