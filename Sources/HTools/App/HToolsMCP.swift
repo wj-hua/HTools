@@ -80,9 +80,11 @@ enum HToolsMCP {
             case "total": granularity = .total
             default: throw MCPError.message("period 必须是 today、week、month 或 total")
             }
-            let loaded = await UsageStore.loadAllData(saveCache: false)
+            let timeZone = UsageStore.resolveTimeZone(UserDefaults.standard.string(forKey: "tokenTimeZone") ?? "")
+            let loaded = await UsageStore.loadAllData(saveCache: false, timeZone: timeZone)
             let now = Date()
-            let calendar = Calendar.current
+            var calendar = Calendar.current
+            calendar.timeZone = timeZone
             let bucket = loaded.buckets[granularity]?.first { bucket in
                 switch granularity {
                 case .day: return calendar.isDate(bucket.startDate, inSameDayAs: now)
@@ -97,7 +99,7 @@ enum HToolsMCP {
                 guard let t = totals[tool] else { return nil }
                 return ["tool": tool.rawValue, "inputTokens": t.inputTokens, "cacheReadTokens": t.cacheReadTokens, "cacheCreationTokens": t.cacheCreationTokens, "outputTokens": t.outputTokens, "reasoningTokens": t.reasoningTokens, "totalTokens": t.totalTokens]
             }
-            return ["period": period, "timezone": TimeZone.current.identifier, "generatedAt": ISO8601DateFormatter().string(from: now), "totalTokens": bucket?.combinedTotal ?? 0, "byTool": rows, "note": "基于本机可读取的记录；与账单不同。部分来源或记录可能不可用，DeepSeek 需要 zstd。"]
+            return ["period": period, "timezone": timeZone.identifier, "generatedAt": ISO8601DateFormatter().string(from: now), "totalTokens": bucket?.combinedTotal ?? 0, "byTool": rows, "note": "基于本机可读取的记录；与账单不同。部分来源或记录可能不可用，DeepSeek 需要 zstd。"]
         case "list_ai_processes":
             try validate(arguments, allowed: [])
             let items = ProcessMonitor.scanProcesses().sorted { $0.memoryBytes > $1.memoryBytes }

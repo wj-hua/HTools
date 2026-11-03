@@ -9,27 +9,48 @@ final class UsageStore: ObservableObject {
     @Published var availableTools: Set<Tool> = []
     @Published private(set) var bucketsByGranularity: [Granularity: [UsageBucket]] = [:]
 
+    @Published var timeZoneIdentifier: String = UserDefaults.standard.string(forKey: "tokenTimeZone") ?? "" {
+        didSet {
+            UserDefaults.standard.set(timeZoneIdentifier, forKey: "tokenTimeZone")
+            bucketsByGranularity = Self.aggregate(events, timeZone: timeZone)
+        }
+    }
+
+    var timeZone: TimeZone { Self.resolveTimeZone(timeZoneIdentifier) }
+
+    static func resolveTimeZone(_ identifier: String) -> TimeZone {
+        TimeZone(identifier: identifier) ?? .autoupdatingCurrent
+    }
+
+    nonisolated static func aggregate(_ events: [UsageEvent], timeZone: TimeZone) -> [Granularity: [UsageBucket]] {
+        Dictionary(uniqueKeysWithValues: Granularity.allCases.map {
+            ($0, UsageAggregator.buckets(for: events, granularity: $0, timeZone: timeZone))
+        })
+    }
+
     func buckets(for granularity: Granularity) -> [UsageBucket] {
         bucketsByGranularity[granularity] ?? []
     }
 
     /// 包含当前时刻的周期；该周期还没有任何消耗时返回一个空桶。
     func currentBucket(for granularity: Granularity) -> UsageBucket {
-        let calendar = Calendar.current
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
         let now = Date()
         let allBuckets = buckets(for: granularity)
 
         switch granularity {
         case .hour:
-            if let b = allBuckets.first(where: { calendar.isDate($0.startDate, equalTo: now, toGranularity: .hour) }) {
+            if let interval = calendar.dateInterval(of: .hour, for: now),
+               let b = allBuckets.first(where: { interval.contains($0.startDate) }) {
                 return b
             }
-            return UsageBucket(id: "current-hour", label: now.formatted(.dateTime.hour().minute()), startDate: now)
+            return UsageBucket(id: "current-hour", label: now.formatted(Date.FormatStyle(timeZone: timeZone).hour().minute()), startDate: now)
         case .day:
-            if let b = allBuckets.first(where: { calendar.isDateInToday($0.startDate) }) {
+            if let b = allBuckets.first(where: { calendar.isDate($0.startDate, inSameDayAs: now) }) {
                 return b
             }
-            return UsageBucket(id: "today", label: now.formatted(.dateTime.month().day().weekday()), startDate: now)
+            return UsageBucket(id: "today", label: now.formatted(Date.FormatStyle(timeZone: timeZone).month().day().weekday()), startDate: now)
         case .week:
             if let interval = calendar.dateInterval(of: .weekOfYear, for: now),
                let b = allBuckets.first(where: { interval.contains($0.startDate) }) {
@@ -40,7 +61,7 @@ final class UsageStore: ObservableObject {
             if let b = allBuckets.first(where: { calendar.isDate($0.startDate, equalTo: now, toGranularity: .month) }) {
                 return b
             }
-            return UsageBucket(id: "this-month", label: now.formatted(.dateTime.year().month()), startDate: now)
+            return UsageBucket(id: "this-month", label: now.formatted(Date.FormatStyle(timeZone: timeZone).year().month()), startDate: now)
         case .total:
             return allBuckets.first ?? UsageBucket(id: "total", label: "全部", startDate: .distantPast)
         }
@@ -52,10 +73,11 @@ final class UsageStore: ObservableObject {
         guard !isRefreshing else { return }
         isRefreshing = true
         Task {
-            let (resultEvents, resultTools, resultBuckets) = await Self.loadAllData()
+            let selectedTimeZone = timeZone
+            let (resultEvents, resultTools, resultBuckets) = await Self.loadAllData(timeZone: selectedTimeZone)
             self.events = resultEvents
             self.availableTools = resultTools
-            self.bucketsByGranularity = resultBuckets
+            self.bucketsByGranularity = selectedTimeZone == self.timeZone ? resultBuckets : Self.aggregate(resultEvents, timeZone: self.timeZone)
             self.lastRefreshed = Date()
             self.isRefreshing = false
             if ProcessInfo.processInfo.environment["USEDTOKEN_DEBUG_DUMP"] != nil {
@@ -71,7 +93,7 @@ final class UsageStore: ObservableObject {
         refresh()
     }
 
-    static func loadAllData(saveCache: Bool = true) async -> (events: [UsageEvent], tools: Set<Tool>, buckets: [Granularity: [UsageBucket]]) {
+    static func loadAllData(saveCache: Bool = true, timeZone: TimeZone = .current) async -> (events: [UsageEvent], tools: Set<Tool>, buckets: [Granularity: [UsageBucket]]) {
         await Task.detached(priority: .userInitiated) {
             var all: [UsageEvent] = []
             all.append(contentsOf: ClaudeCodeParser.parseAll())
@@ -87,10 +109,7 @@ final class UsageStore: ObservableObject {
                 return seenRequestIDs.insert(requestID).inserted
             }
 
-            var buckets: [Granularity: [UsageBucket]] = [:]
-            for g in Granularity.allCases {
-                buckets[g] = UsageAggregator.buckets(for: all, granularity: g)
-            }
+            let buckets = aggregate(all, timeZone: timeZone)
 
             let tools = Set(all.map(\.tool))
             return (all, tools, buckets)

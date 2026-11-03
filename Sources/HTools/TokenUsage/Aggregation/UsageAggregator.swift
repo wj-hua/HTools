@@ -11,31 +11,22 @@ enum Granularity: String, CaseIterable, Identifiable {
 }
 
 enum UsageAggregator {
-    private static let calendar = Calendar.current
-
-    private static let dayLabelFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "M月d日 EEE"
-        f.locale = Locale(identifier: "zh_CN")
-        return f
-    }()
-
-    private static let hourLabelFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:00"
-        return f
-    }()
-
-    private static let monthLabelFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy年M月"
-        f.locale = Locale(identifier: "zh_CN")
-        return f
-    }()
-
     /// Buckets events by the requested granularity, newest first. `.total` collapses
     /// everything into a single bucket.
-    static func buckets(for events: [UsageEvent], granularity: Granularity) -> [UsageBucket] {
+    static func buckets(for events: [UsageEvent], granularity: Granularity, timeZone: TimeZone = .current) -> [UsageBucket] {
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        func formatter(_ format: String) -> DateFormatter {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "zh_CN")
+            formatter.calendar = calendar
+            formatter.timeZone = timeZone
+            formatter.dateFormat = format
+            return formatter
+        }
+        let dayLabelFormatter = formatter("M月d日 EEE")
+        let hourLabelFormatter = formatter("HH:mm")
+        let monthLabelFormatter = formatter("yyyy年M月")
         guard !events.isEmpty else { return [] }
 
         switch granularity {
@@ -58,7 +49,12 @@ enum UsageAggregator {
                 events,
                 startFor: { calendar.dateInterval(of: .weekOfYear, for: $0)?.start ?? $0 },
                 idFor: { "w-\($0.timeIntervalSinceReferenceDate)" },
-                labelFor: { weekLabel($0) }
+                labelFor: { start in
+                    guard let end = calendar.date(byAdding: .day, value: 6, to: start) else {
+                        return dayLabelFormatter.string(from: start)
+                    }
+                    return "\(dayLabelFormatter.string(from: start)) – \(dayLabelFormatter.string(from: end))"
+                }
             )
         case .month:
             return bucket(
@@ -95,12 +91,5 @@ enum UsageAggregator {
                 totalsByTool: totals
             )
         }.sorted { $0.startDate > $1.startDate }
-    }
-
-    private static func weekLabel(_ start: Date) -> String {
-        guard let end = calendar.date(byAdding: .day, value: 6, to: start) else {
-            return dayLabelFormatter.string(from: start)
-        }
-        return "\(dayLabelFormatter.string(from: start)) – \(dayLabelFormatter.string(from: end))"
     }
 }

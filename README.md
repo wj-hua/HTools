@@ -4,7 +4,7 @@
 
 | 侧边栏 | 来源 | 说明 |
 | --- | --- | --- |
-| Token 用量 | used-token | 按小时/天/周/月/总计统计 Claude Code、Codex、agy、DeepSeek Harness 的 Token，含趋势图 |
+| Token 用量 | used-token | 按小时/天/周/月/总计统计 Claude Code、Codex、agy、DeepSeek Harness 的 Token，含趋势图与时区选择 |
 | 进程与内存 | used-token | 页面可见时每 3 秒刷新，可结束单个或全部进程 |
 | 常用文本 | clipboard | 管理标签与文本；在任意应用按 `⌥ Space` 呼出原有的快速粘贴面板 |
 | 跨设备粘贴板 | 新增 | Mac 自动上传文本与图片至阿里云；Android 复制、下载；仅保留最新 50 条 |
@@ -35,6 +35,8 @@ HTools 可作为本机只读 MCP 服务运行，无需打开图形界面。先�
 - 参数：`--mcp`
 
 例如，本项目的构建产物为 `dist/HTools.app/Contents/MacOS/HTools`，配置时请填写其绝对路径。也可用开发版 `.build/debug/HTools` 的绝对路径，但清理或移动构建目录后需要重新构建。配置后新建或重启相应 AI 会话，再询问“今天 token 用量是多少？”等问题。不同 Provider 和受限会话能否加载外部 MCP 取决于 HCode 的配置。
+
+Token 用量页面可选择统计时区，默认跟随系统；该设置也适用于菜单栏和 MCP 的 Token 查询。
 
 目前提供 `get_token_usage`、`list_ai_processes`、`list_tasks`、`list_devices`、`get_device_info`、`get_foreground_app` 和 `capture_device_screen`。手机截图返回 MCP 图片内容，支持 Android 和鸿蒙；实际展示和识图取决于客户端及模型是否支持图片。多台设备连接时，先用设备列表取得 ID，并在设备信息、前台应用查询或截图时指定 ID；只有一台已连接设备时可以省略。待办读取磁盘上已保存的数据，不修改任务；界面中尚未保存的编辑可能暂时不出现。
 

@@ -46,6 +46,16 @@ struct TokenUsageView: View {
                 .fixedSize()
             }
             ToolbarItem(placement: .primaryAction) {
+                Picker("统计时区", selection: $store.timeZoneIdentifier) {
+                    Text("跟随系统（\(TimeZone.autoupdatingCurrent.identifier)）").tag("")
+                    Divider()
+                    ForEach(TimeZone.knownTimeZoneIdentifiers, id: \.self) { identifier in
+                        Text(identifier.replacingOccurrences(of: "_", with: " ")).tag(identifier)
+                    }
+                }
+                .help("选择 Token 统计时区")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     store.refresh()
                 } label: {
@@ -214,6 +224,12 @@ struct TokenUsageView: View {
                     .foregroundStyle(by: .value("工具", point.tool.rawValue))
                     .cornerRadius(3)
                 }
+                .environment(\.timeZone, store.timeZone)
+                .environment(\.calendar, {
+                    var calendar = Calendar.current
+                    calendar.timeZone = store.timeZone
+                    return calendar
+                }())
                 .chartForegroundStyleScale(
                     domain: tools.map(\.rawValue),
                     range: tools.map(\.accentColor)
