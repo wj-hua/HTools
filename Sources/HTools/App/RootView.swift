@@ -3,6 +3,7 @@ import SwiftUI
 enum AppSection: String, CaseIterable, Identifiable {
     case tokens
     case processes
+    case mcp
     case snippets
     case cloudClipboard
     case snip
@@ -20,6 +21,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .tokens: return "Token 用量"
         case .processes: return "进程与内存"
+        case .mcp: return "MCP 管理"
         case .snippets: return "常用文本"
         case .cloudClipboard: return "跨设备粘贴板"
         case .snip: return "截图"
@@ -37,6 +39,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .tokens: return "chart.bar.xaxis"
         case .processes: return "memorychip"
+        case .mcp: return "point.3.connected.trianglepath.dotted"
         case .snippets: return "text.quote"
         case .cloudClipboard: return "doc.on.clipboard"
         case .snip: return "camera.viewfinder"
@@ -82,6 +85,8 @@ struct RootView: View {
             TokenUsageView(store: model.usageStore)
         case .processes:
             ProcessesView(monitor: model.processMonitor)
+        case .mcp:
+            MCPManagementView()
         case .snippets:
             SnippetsView(store: model.pasteStore)
         case .cloudClipboard:
@@ -118,6 +123,7 @@ private struct SidebarView: View {
             Section("AI 编码") {
                 row(.tokens)
                 row(.processes, badge: processMonitor.totalProcessCount)
+                row(.mcp)
             }
             Section("效率") {
                 row(.snippets)

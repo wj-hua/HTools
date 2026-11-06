@@ -38,6 +38,8 @@ HTools 可作为本机只读 MCP 服务运行，无需打开图形界面。先�
 
 Token 用量页面可选择统计时区，默认跟随系统；该设置也适用于菜单栏和 MCP 的 Token 查询。
 
+HTools 侧边栏的“MCP 管理”页面提供连接信息和工具开关。关闭工具后，服务会拒绝新的调用；重新连接 MCP 客户端可刷新工具列表。MCP 服务由客户端启动，页面不显示客户端连接状态。
+
 目前提供 `get_token_usage`、`list_ai_processes`、`list_tasks`、`list_devices`、`get_device_info`、`get_foreground_app` 和 `capture_device_screen`。手机截图返回 MCP 图片内容，支持 Android 和鸿蒙；实际展示和识图取决于客户端及模型是否支持图片。多台设备连接时，先用设备列表取得 ID，并在设备信息、前台应用查询或截图时指定 ID；只有一台已连接设备时可以省略。待办读取磁盘上已保存的数据，不修改任务；界面中尚未保存的编辑可能暂时不出现。
 
 用量依赖本机可读取的历史记录，DeepSeek 统计还需要 `zstd`；来源缺失或解析失败可能导致结果不完整，结果并非账单。设备列表复用 HTools 的 ADB/HDC 实现，桥接工具执行失败时可能返回空列表。MCP 服务不写入 HTools 的用量缓存，也不返回进程命令行或配置密钥。工具及后续计划见 [MCP 计划](docs/HTools-MCP计划.md)。

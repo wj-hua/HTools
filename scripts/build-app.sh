@@ -46,6 +46,12 @@ fi
 cd "$project_root"
 swift build -c release
 
+# 避免运行中的 App 或 Finder 扩展锁定 app bundle 导致 codesign 写入失败
+if pgrep -q -f "HTools.app" 2>/dev/null; then
+    killall -9 HTools HToolsFinder HToolsFinderHelper 2>/dev/null || true
+    sleep 1
+fi
+
 if [[ -d "$app_dir" ]]; then
     /bin/rm -rf "$app_dir"
 fi

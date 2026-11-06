@@ -11,7 +11,7 @@ enum HToolsMCP {
             "deviceId": ["type": "string", "description": "设备 ID，来自 list_devices；多设备时必填"]
         ], "additionalProperties": false
     ]
-    private static let definitions: [[String: Any]] = [
+    static let definitions: [[String: Any]] = [
         ["name": "get_token_usage", "description": "查询本机 AI 工具的 token 用量；总数包括缓存和推理 token。", "inputSchema": [
             "type": "object", "properties": ["period": ["type": "string", "enum": ["today", "week", "month", "total"], "description": "默认 today，按 Mac 本地时区计算"]], "additionalProperties": false
         ]],
@@ -41,11 +41,13 @@ enum HToolsMCP {
                     let requested = params["protocolVersion"] as? String ?? ""
                     send(id: id, result: ["protocolVersion": versions.contains(requested) ? requested : versions[0], "capabilities": ["tools": [:]], "serverInfo": ["name": "htools", "version": "0.1.0"]])
                 case "ping": send(id: id, result: [:])
-                case "tools/list": send(id: id, result: ["tools": definitions])
+                case "tools/list":
+                    send(id: id, result: ["tools": definitions.filter { MCPSettings.isEnabled($0["name"] as? String ?? "") }])
                 case "tools/call":
                     do {
                         guard let name = params["name"] as? String else { throw MCPError.message("缺少工具名称") }
                         guard params["arguments"] == nil || params["arguments"] is [String: Any] else { throw MCPError.message("工具参数必须是对象") }
+                        guard MCPSettings.isEnabled(name) else { throw MCPError.message("该工具已在 HTools 的 MCP 管理中关闭") }
                         let value = try await call(name, arguments: params["arguments"] as? [String: Any] ?? [:])
                         if let image = value as? ScreenImage {
                             send(id: id, result: ["content": [
