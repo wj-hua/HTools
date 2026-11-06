@@ -30,8 +30,8 @@ final class StethoInspector: ObservableObject {
     private var commandTimeouts: [Int: Task<Void, Never>] = [:]
 
     static let requestLimit = 500
-    private static let bodyLimit = 1_048_576
-    private static let cacheLimit = 16 * 1_048_576
+    private static let bodyLimit = 8 * 1_048_576
+    private static let cacheLimit = 32 * 1_048_576
 
     init(device: ADBDevice, adb: ADBService) {
         self.device = device
@@ -93,7 +93,8 @@ final class StethoInspector: ObservableObject {
                 guard generation == token else { throw CancellationError() }
                 appTitle = page["title"] as? String
                 let socket = session.webSocketTask(with: websocketURL)
-                socket.maximumMessageSize = 16 * 1_048_576
+                // 正文经 Base64 和 JSON 转义后会变大，单条消息超限会导致整个连接断开。
+                socket.maximumMessageSize = 64 * 1_048_576
                 self.socket = socket
                 socket.resume()
 
@@ -176,15 +177,15 @@ final class StethoInspector: ObservableObject {
                 }
                 let body: StethoRequest.Body
                 if text.utf8.count > Self.bodyLimit {
-                    body = .unavailable("响应正文超过 1 MB，请使用 Chrome DevTools 查看。")
+                    body = .unavailable("响应正文超过 8 MB，请使用 Chrome DevTools 查看。")
                 } else if result["base64Encoded"] as? Bool == true {
                     if let data = Data(base64Encoded: text), let decoded = String(data: data, encoding: .utf8) {
-                        body = .text(decoded)
+                        body = .text(StethoRequest.formattedBody(decoded))
                     } else {
                         body = .base64(text)
                     }
                 } else {
-                    body = .text(text)
+                    body = .text(StethoRequest.formattedBody(text))
                 }
                 evictBodies(reserving: body.storedSize, except: id)
                 update(id) { $0.body = body }

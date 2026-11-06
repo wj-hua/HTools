@@ -214,19 +214,23 @@ struct StethoView: View {
                     .labelsHidden()
                     .frame(maxWidth: 400)
                     Spacer()
+                    if detailTab == .response {
+                        switch request.body {
+                        case .text(let text) where !text.isEmpty:
+                            Button("复制响应正文") { copy(text, message: "响应正文已复制") }
+                        case .base64(let text):
+                            Button("复制 Base64") { copy(text, message: "Base64 已复制") }
+                        default:
+                            EmptyView()
+                        }
+                    }
                     Button("复制 URL") { copy(request.url, message: "URL 已复制") }
                     Button("复制 cURL") { copy(request.curl, message: "cURL 已复制") }
                 }
                 .padding(12)
                 Divider()
-                GeometryReader { geometry in
-                    ScrollView([.horizontal, .vertical]) {
-                        detailContent(request)
-                            .padding(16)
-                            .frame(minWidth: geometry.size.width, minHeight: geometry.size.height, alignment: .topLeading)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                detailContent(request)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 ContentUnavailableView("选择请求查看详情", systemImage: "cursorarrow.click")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -239,36 +243,47 @@ struct StethoView: View {
     private func detailContent(_ request: StethoRequest) -> some View {
         switch detailTab {
         case .headers:
-            VStack(alignment: .leading, spacing: 16) {
-                textSection("请求", text: "\(request.method) \(request.url)")
-                textSection("状态", text: "\(request.statusLabel) \(request.statusText)\n耗时：\(request.durationText)\n类型：\(request.mimeType.isEmpty ? "—" : request.mimeType)")
-                if let failure = request.failure { textSection("错误", text: failure) }
-                textSection("请求头", text: headerText(request.requestHeaders))
-                textSection("响应头", text: headerText(request.responseHeaders))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    textSection("请求", text: "\(request.method) \(request.url)")
+                    textSection("状态", text: "\(request.statusLabel) \(request.statusText)\n耗时：\(request.durationText)\n类型：\(request.mimeType.isEmpty ? "—" : request.mimeType)")
+                    if let failure = request.failure { textSection("错误", text: failure) }
+                    textSection("请求头", text: headerText(request.requestHeaders))
+                    textSection("响应头", text: headerText(request.responseHeaders))
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         case .request:
-            bodyText(request.postData.map(StethoRequest.formattedBody) ?? "此请求没有正文，或 Stetho 未提供正文。")
+            if let postData = request.postData, !postData.isEmpty {
+                ReadOnlyTextView(text: StethoRequest.formattedBody(postData))
+            } else {
+                bodyMessage("此请求没有正文，或 Stetho 未提供正文。")
+            }
         case .response:
             switch request.body {
             case .notLoaded:
-                bodyText(request.failure ?? (request.isFinished ? "正文尚未读取，请在抓包连接期间查看。" : "等待请求完成…"))
+                bodyMessage(request.failure ?? (request.isFinished ? "正文尚未读取，请在抓包连接期间查看。" : "等待请求完成…"))
             case .loading:
                 ProgressView("正在读取响应正文…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .text(let text):
-                VStack(alignment: .leading, spacing: 12) {
-                    Button("复制响应正文") { copy(text, message: "响应正文已复制") }
-                    bodyText(text.isEmpty ? "（空响应）" : StethoRequest.formattedBody(text))
-                }
+                if text.isEmpty { bodyMessage("（空响应）") } else { ReadOnlyTextView(text: text) }
             case .base64(let text):
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("二进制响应 · Base64").font(.headline)
-                    Button("复制 Base64") { copy(text, message: "Base64 已复制") }
-                    bodyText(text)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("二进制响应 · Base64").font(.headline).padding([.horizontal, .top], 16)
+                    ReadOnlyTextView(text: text)
                 }
             case .unavailable(let message):
-                bodyText(message)
+                bodyMessage(message)
             }
         }
+    }
+
+    private func bodyMessage(_ text: String) -> some View {
+        bodyText(text)
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func textSection(_ title: String, text: String) -> some View {
