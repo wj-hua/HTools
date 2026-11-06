@@ -36,6 +36,16 @@ struct StethoRequest: Identifiable {
             default: return 0
             }
         }
+
+        var displayString: String? {
+            switch self {
+            case .text(let text): return text
+            case .base64(let b64): return "(Base64) \(b64)"
+            case .unavailable(let reason): return "不可用: \(reason)"
+            case .loading: return "加载中…"
+            case .notLoaded: return nil
+            }
+        }
     }
 
     let id = UUID()
@@ -100,5 +110,41 @@ struct StethoRequest: Identifiable {
               let formatted = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys, .fragmentsAllowed]),
               let result = String(data: formatted, encoding: .utf8) else { return text }
         return result
+    }
+
+    func summaryDictionary() -> [String: Any] {
+        var dict: [String: Any] = [
+            "id": id.uuidString,
+            "requestId": requestID,
+            "method": method,
+            "url": url,
+            "host": host,
+            "path": path,
+            "status": status as Any? ?? NSNull(),
+            "statusText": statusText,
+            "statusLabel": statusLabel,
+            "duration": durationText,
+            "mimeType": mimeType,
+            "isFinished": isFinished,
+            "startedAt": ISO8601DateFormatter().string(from: startedAt)
+        ]
+        if let failure {
+            dict["failure"] = failure
+        }
+        return dict
+    }
+
+    func detailDictionary() -> [String: Any] {
+        var dict = summaryDictionary()
+        dict["requestHeaders"] = requestHeaders
+        dict["postData"] = postData as Any? ?? NSNull()
+        dict["responseHeaders"] = responseHeaders
+        dict["curl"] = curl
+        if let bodyText = body.displayString {
+            dict["responseBody"] = bodyText
+        } else {
+            dict["responseBody"] = NSNull()
+        }
+        return dict
     }
 }

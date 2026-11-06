@@ -25,7 +25,7 @@
 | 高 | 任务清单 | `list_tasks`、`add_task`、`update_task`：查询、创建、修改和完成任务 | 需保证 HTools 与 MCP 并发访问时不丢失更新 |
 | 高 | 手机设备查询 | `list_devices`、`get_device_info`、`get_foreground_app` | 指定设备；分别核实 Android 与鸿蒙的能力范围 |
 | 高 | 手机截图 | `capture_device_screen`：获取指定设备截图，供 AI 分析 | 图片可能包含个人信息；确认客户端能接收图片结果 |
-| 中 | Stetho 抓包 | 查询当前会话请求摘要，按需读取详情 | 抓包数据在会话内存中；正文需在停止抓包前读取，可能包含敏感信息 |
+| 中 | Stetho 抓包 | 已支持 `list_stetho_targets`、`capture_stetho_requests`、`start_stetho_capture`、`get_stetho_requests`、`stop_stetho_capture`：发现 Stetho 应用、定时即时抓包或后台会话抓包，按需读取详情和响应正文 | 抓包数据在会话内存中；正文需在断开连接前读取，端口自动释放 |
 | 中 | 蒲公英分发 | 已支持 `upload_to_pgyer`：按明确指令上传 APK/IPA/HAP 安装包，返回链接与二维码 | 密钥保存在 Keychain，支持传参指定，不将密钥暴露给模型 |
 | 中 | 常用文本 | 按标签查询、创建和修改文本 | 内容可能包含个人信息；避免无关批量读取 |
 | 中 | 翻译与 OCR | 翻译指定文字、识别指定图片中的文字 | 翻译会使用已配置的外部接口；明确数据发送范围 |
@@ -74,7 +74,7 @@ AI 调用 `get_token_usage(period: "today")`，工具返回查询时间、本地
 ### 第二阶段：按实际需求扩展
 
 - [x] 接入蒲公英分发上传（`upload_to_pgyer`），支持 APK/IPA/HAP，自动记录至本地历史。
-- 接入手机截图和 Stetho 抓包查询，并明确数据范围及会话生命周期。
+- [x] 接入 Stetho 抓包能力（支持发现应用、即时定时抓包、后台抓包会话、查询摘要/详情及 cURL、响应正文自动获取与端口回收）。
 - 按需求接入常用文本、翻译和 OCR。
 - 根据设备控制、背夹、剪贴板和休眠功能的实际使用频率，逐项决定是否接入。
 

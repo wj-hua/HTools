@@ -32,7 +32,38 @@ enum HToolsMCP {
                 "password": ["type": "string", "description": "安装密码（当 installType 为 password 时必填）"],
                 "apiKey": ["type": "string", "description": "蒲公英 API Key。默认自动从 HTools 钥匙串读取，如未配置可在参数中传入"]
             ], "additionalProperties": false
-        ]]
+        ]],
+        ["name": "list_stetho_targets", "description": "列出已连接 Android 设备上运行且支持 Stetho 抓包的应用进程与 socket。", "inputSchema": deviceSchema],
+        ["name": "capture_stetho_requests", "description": "在指定时间内抓取 Android 设备上 Stetho 应用的网络请求（默认抓取 10 秒），直接返回抓到的请求及响应正文。适合单次即时抓包与接口分析。", "inputSchema": [
+            "type": "object", "properties": [
+                "deviceId": ["type": "string", "description": "设备 ID，来自 list_devices；多设备时必填"],
+                "processName": ["type": "string", "description": "目标应用进程名（如 com.example.app）；单应用或前台应用时可省略"],
+                "target": ["type": "string", "description": "processName 的别名"],
+                "duration": ["type": "integer", "description": "抓包持续时间（秒，默认 10，范围 1-60）"],
+                "maxRequests": ["type": "integer", "description": "最多抓取的请求数（默认 50，达到后提前结束）"],
+                "includeBody": ["type": "boolean", "description": "是否加载并包含响应正文（默认 true）"],
+                "urlFilter": ["type": "string", "description": "URL 包含的关键字过滤"]
+            ], "additionalProperties": false
+        ]],
+        ["name": "start_stetho_capture", "description": "启动后台 Stetho 抓包会话，持续监听网络请求。可调用 get_stetho_requests 查询请求，使用完毕后需调用 stop_stetho_capture 停止。", "inputSchema": [
+            "type": "object", "properties": [
+                "deviceId": ["type": "string", "description": "设备 ID，来自 list_devices；多设备时必填"],
+                "processName": ["type": "string", "description": "目标应用进程名；单应用或前台应用时可省略"],
+                "target": ["type": "string", "description": "processName 的别名"],
+                "autoStopSeconds": ["type": "integer", "description": "自动停止超时时间（秒，默认 120，范围 10-600）"]
+            ], "additionalProperties": false
+        ]],
+        ["name": "get_stetho_requests", "description": "查询当前 Stetho 抓包会话中的请求列表或特定请求详情。传入 requestId 可获取完整标头、正文和 cURL 命令。", "inputSchema": [
+            "type": "object", "properties": [
+                "requestId": ["type": "string", "description": "特定请求的 ID（传入时返回该请求的详细信息及正文）"],
+                "urlFilter": ["type": "string", "description": "按 URL 关键字过滤"],
+                "statusFilter": ["type": "string", "enum": ["all", "success", "failed", "pending"], "description": "按状态过滤：all（默认）、success、failed、pending"],
+                "includeBody": ["type": "boolean", "description": "是否加载并包含响应正文（默认查询详情时为 true，列表时为 false）"],
+                "limit": ["type": "integer", "description": "返回的最多请求数量（默认 50）"],
+                "clear": ["type": "boolean", "description": "查询后是否清空内存中的抓包记录（默认 false）"]
+            ], "additionalProperties": false
+        ]],
+        ["name": "stop_stetho_capture", "description": "停止当前后台 Stetho 抓包会话，断开调试连接并释放端口转发。", "inputSchema": emptySchema]
     ]
 
     static func run() async {
@@ -131,20 +162,11 @@ enum HToolsMCP {
         case "list_devices", "get_device_info", "get_foreground_app", "capture_device_screen":
             try validate(arguments, allowed: name == "list_devices" ? [] : ["deviceId"])
             let service = try ADBService(requireSelectedDevice: true)
-            let devices = try await service.listDevices()
             if name == "list_devices" {
+                let devices = try await service.listDevices()
                 return ["devices": devices.map { ["id": $0.identifier.selectionKey, "serial": $0.serial, "bridge": $0.bridge.rawValue, "state": $0.state.rawValue, "model": $0.model as Any? ?? NSNull()] as [String: Any] }, "note": "设备列表由可用的 ADB/HDC 提供；桥接工具执行失败时现有服务可能返回空列表。"]
             }
-            let deviceId = try string(arguments, key: "deviceId")
-            let connected = devices.filter { $0.state == .device }
-            let device: ADBDevice
-            if let deviceId {
-                guard let match = connected.first(where: { $0.identifier.selectionKey == deviceId }) else { throw MCPError.message("指定设备未连接或不可用") }
-                device = match
-            } else {
-                guard connected.count == 1, let only = connected.first else { throw MCPError.message(connected.isEmpty ? "没有已连接设备" : "存在多台设备，请指定 deviceId") }
-                device = only
-            }
+            let device = try await resolveConnectedDevice(arguments: arguments, service: service)
             service.selectDevice(device)
             if name == "capture_device_screen" {
                 let data = try await service.screenshot(for: device)
@@ -166,6 +188,199 @@ enum HToolsMCP {
             }
             let info = try await service.deviceInfo()
             return ["deviceId": device.identifier.selectionKey, "manufacturer": info.manufacturer, "model": info.model, "systemVersion": info.systemVersion, "apiLevel": info.apiLevel, "resolution": info.resolution, "battery": info.battery, "storage": info.storage, "ipAddress": info.ipAddress]
+        case "list_stetho_targets":
+            try validate(arguments, allowed: ["deviceId"])
+            let service = try ADBService(requireSelectedDevice: true)
+            let device = try await resolveConnectedDevice(arguments: arguments, service: service)
+            guard device.bridge == .adb else {
+                throw MCPError.message("Stetho 仅支持 Android (ADB) 设备，不支持鸿蒙 (HDC) 设备")
+            }
+            let targets = try await StethoInspector.discoverTargets(device: device, adb: service)
+            return [
+                "deviceId": device.identifier.selectionKey,
+                "deviceModel": device.model as Any? ?? NSNull(),
+                "count": targets.count,
+                "targets": targets.map { [
+                    "processName": $0.processName,
+                    "socketName": $0.socketName
+                ] },
+                "note": targets.isEmpty ? "未发现运行中的 Stetho 应用。请在手机上打开已集成 Stetho 的应用。" : "已发现 \(targets.count) 个 Stetho 应用"
+            ]
+        case "capture_stetho_requests":
+            try validate(arguments, allowed: ["deviceId", "processName", "target", "duration", "maxRequests", "includeBody", "urlFilter"])
+            let service = try ADBService(requireSelectedDevice: true)
+            let device = try await resolveConnectedDevice(arguments: arguments, service: service)
+            guard device.bridge == .adb else {
+                throw MCPError.message("Stetho 抓包仅支持 Android (ADB) 设备，不支持鸿蒙 (HDC) 设备")
+            }
+            let target = try await resolveTarget(device: device, service: service, arguments: arguments)
+
+            if activeInspector?.phase == .capturing {
+                await stopCurrentSession()
+            }
+
+            let tempInspector = StethoInspector(device: device, adb: service)
+            try await tempInspector.startAsync(target)
+
+            let duration = min(max(try int(arguments, key: "duration") ?? 10, 1), 60)
+            let maxRequests = min(max(try int(arguments, key: "maxRequests") ?? 50, 1), 200)
+            let checkIntervalMs = 200
+            let iterations = max(1, (duration * 1000) / checkIntervalMs)
+
+            for _ in 0..<iterations {
+                try await Task.sleep(for: .milliseconds(checkIntervalMs))
+                if tempInspector.phase != .capturing || tempInspector.requests.count >= maxRequests {
+                    break
+                }
+            }
+
+            try? await Task.sleep(for: .milliseconds(300))
+
+            var captured = tempInspector.requests
+            if let filter = try string(arguments, key: "urlFilter"), !filter.isEmpty {
+                captured = captured.filter { $0.url.localizedCaseInsensitiveContains(filter) }
+            }
+
+            let includeBody = try bool(arguments, key: "includeBody") ?? true
+            if includeBody && tempInspector.phase == .capturing {
+                for req in captured.prefix(30) where req.isFinished && req.body == .notLoaded && req.failure == nil {
+                    _ = try? await tempInspector.loadBodyAsync(for: req.id)
+                }
+            }
+
+            lastCapturedRequests = tempInspector.requests
+            await tempInspector.stopAsync()
+            tempInspector.close()
+
+            let resultRows = captured.prefix(maxRequests).map { req in
+                let current = lastCapturedRequests.first(where: { $0.id == req.id }) ?? req
+                return includeBody ? current.detailDictionary() : current.summaryDictionary()
+            }
+
+            return [
+                "deviceId": device.identifier.selectionKey,
+                "processName": target.processName,
+                "durationSeconds": duration,
+                "totalCaptured": tempInspector.requests.count,
+                "returnedCount": resultRows.count,
+                "requests": resultRows,
+                "note": "抓包已完成并断开连接。最近抓包记录已保存在内存中，后续可通过 get_stetho_requests 查看详情。"
+            ]
+        case "start_stetho_capture":
+            try validate(arguments, allowed: ["deviceId", "processName", "target", "autoStopSeconds"])
+            let service = try ADBService(requireSelectedDevice: true)
+            let device = try await resolveConnectedDevice(arguments: arguments, service: service)
+            guard device.bridge == .adb else {
+                throw MCPError.message("Stetho 抓包仅支持 Android (ADB) 设备，不支持鸿蒙 (HDC) 设备")
+            }
+            let target = try await resolveTarget(device: device, service: service, arguments: arguments)
+
+            await stopCurrentSession()
+
+            let inspector = StethoInspector(device: device, adb: service)
+            try await inspector.startAsync(target)
+
+            activeInspector = inspector
+            activeSessionDevice = device
+            activeSessionTarget = target
+            let startedAt = Date()
+            activeSessionStartedAt = startedAt
+
+            let autoStopSeconds = try int(arguments, key: "autoStopSeconds") ?? 120
+            let clampedAutoStop = min(max(autoStopSeconds, 10), 600)
+            activeSessionAutoStopTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(clampedAutoStop))
+                if activeInspector === inspector {
+                    await stopCurrentSession()
+                }
+            }
+
+            return [
+                "status": "capturing",
+                "deviceId": device.identifier.selectionKey,
+                "device": device.displayName,
+                "processName": target.processName,
+                "socketName": target.socketName,
+                "appTitle": inspector.appTitle as Any? ?? NSNull(),
+                "startedAt": ISO8601DateFormatter().string(from: startedAt),
+                "autoStopSeconds": clampedAutoStop,
+                "message": "Stetho 抓包会话已建立并正在监听网络请求。可调用 get_stetho_requests 查询请求摘要或详情；使用完毕后请调用 stop_stetho_capture 停止。"
+            ]
+        case "get_stetho_requests":
+            try validate(arguments, allowed: ["requestId", "urlFilter", "statusFilter", "includeBody", "limit", "clear"])
+            let inspector = activeInspector
+            let sourceRequests = inspector?.requests ?? lastCapturedRequests
+            guard !sourceRequests.isEmpty || inspector != nil else {
+                throw MCPError.message("当前没有正在运行的抓包会话，也没有历史记录。请先调用 start_stetho_capture 或 capture_stetho_requests。")
+            }
+
+            if let requestId = try string(arguments, key: "requestId") {
+                guard let request = sourceRequests.first(where: { $0.id.uuidString == requestId || $0.requestID == requestId }) else {
+                    throw MCPError.message("未找到 ID 为 \(requestId) 的请求。")
+                }
+                let includeBody = try bool(arguments, key: "includeBody") ?? true
+                if includeBody && inspector != nil && inspector?.phase == .capturing && request.body == .notLoaded && request.isFinished && request.failure == nil {
+                    _ = try? await inspector?.loadBodyAsync(for: request.id)
+                }
+                let current = inspector?.requests.first(where: { $0.id == request.id }) ?? request
+                return current.detailDictionary()
+            }
+
+            var list = sourceRequests
+            if let urlFilter = try string(arguments, key: "urlFilter"), !urlFilter.isEmpty {
+                list = list.filter { $0.url.localizedCaseInsensitiveContains(urlFilter) }
+            }
+            if let statusFilter = try string(arguments, key: "statusFilter") {
+                switch statusFilter {
+                case "success": list = list.filter { ($0.status ?? 0) >= 200 && ($0.status ?? 0) < 400 }
+                case "failed": list = list.filter { $0.failure != nil || ($0.status ?? 0) >= 400 }
+                case "pending": list = list.filter { !$0.isFinished && $0.failure == nil }
+                case "all": break
+                default: throw MCPError.message("statusFilter 必须是 all、success、failed 或 pending")
+                }
+            }
+
+            let limit = min(max(try int(arguments, key: "limit") ?? 50, 1), 200)
+            let paged = Array(list.suffix(limit))
+            let includeBody = try bool(arguments, key: "includeBody") ?? false
+            if includeBody && inspector != nil && inspector?.phase == .capturing {
+                for req in paged where req.isFinished && req.body == .notLoaded && req.failure == nil {
+                    _ = try? await inspector?.loadBodyAsync(for: req.id)
+                }
+            }
+
+            let rows = paged.map { req -> [String: Any] in
+                let current = inspector?.requests.first(where: { $0.id == req.id }) ?? req
+                return includeBody ? current.detailDictionary() : current.summaryDictionary()
+            }
+
+            let shouldClear = try bool(arguments, key: "clear") ?? false
+            if shouldClear {
+                inspector?.clear()
+                lastCapturedRequests.removeAll()
+            }
+
+            return [
+                "isCapturing": inspector?.phase == .capturing,
+                "totalCount": sourceRequests.count,
+                "returnedCount": rows.count,
+                "requests": rows
+            ]
+        case "stop_stetho_capture":
+            try validate(arguments, allowed: [])
+            guard activeInspector != nil else {
+                return [
+                    "status": "idle",
+                    "message": "当前没有运行中的抓包会话",
+                    "lastCapturedCount": lastCapturedRequests.count
+                ]
+            }
+            let (_, count) = await stopCurrentSession()
+            return [
+                "status": "stopped",
+                "totalCaptured": count,
+                "message": "Stetho 抓包已停止，ADB 端口转发与调试连接已断开。"
+            ]
         case "upload_to_pgyer", "upload_apk_to_pgyer":
             try validate(arguments, allowed: ["filePath", "path", "updateDescription", "installType", "password", "apiKey"])
             let rawPath = try (string(arguments, key: "filePath") ?? string(arguments, key: "path"))
@@ -256,6 +471,96 @@ enum HToolsMCP {
         guard let value = arguments[key] else { return nil }
         guard let value = value as? String else { throw MCPError.message("\(key) 必须是字符串") }
         return value
+    }
+
+    private static func int(_ arguments: [String: Any], key: String) throws -> Int? {
+        guard let value = arguments[key] else { return nil }
+        if let num = value as? Int { return num }
+        if let num = value as? NSNumber { return num.intValue }
+        if let str = value as? String, let num = Int(str) { return num }
+        throw MCPError.message("\(key) 必须是整数")
+    }
+
+    private static func bool(_ arguments: [String: Any], key: String) throws -> Bool? {
+        guard let value = arguments[key] else { return nil }
+        if let b = value as? Bool { return b }
+        if let num = value as? NSNumber { return num.boolValue }
+        if let str = value as? String {
+            let lower = str.lowercased()
+            if lower == "true" || lower == "1" { return true }
+            if lower == "false" || lower == "0" { return false }
+        }
+        throw MCPError.message("\(key) 必须是布尔值")
+    }
+
+    private static var activeInspector: StethoInspector?
+    private static var activeSessionDevice: ADBDevice?
+    private static var activeSessionTarget: StethoTarget?
+    private static var activeSessionStartedAt: Date?
+    private static var activeSessionAutoStopTask: Task<Void, Never>?
+    private static var lastCapturedRequests: [StethoRequest] = []
+
+    private static func resolveConnectedDevice(arguments: [String: Any], service: ADBService) async throws -> ADBDevice {
+        let devices = try await service.listDevices()
+        let connected = devices.filter { $0.state == .device }
+        let deviceId = try string(arguments, key: "deviceId")
+        if let deviceId {
+            guard let match = connected.first(where: { $0.identifier.selectionKey == deviceId }) else {
+                throw MCPError.message("指定设备未连接或不可用：\(deviceId)")
+            }
+            return match
+        }
+        guard connected.count == 1, let only = connected.first else {
+            throw MCPError.message(connected.isEmpty ? "没有已连接设备" : "存在多台设备，请指定 deviceId")
+        }
+        return only
+    }
+
+    private static func resolveTarget(
+        device: ADBDevice,
+        service: ADBService,
+        arguments: [String: Any]
+    ) async throws -> StethoTarget {
+        let targets = try await StethoInspector.discoverTargets(device: device, adb: service)
+        guard !targets.isEmpty else {
+            throw MCPError.message("在设备 \(device.displayName) 上未发现运行中的 Stetho 应用。请在手机上打开已集成 Stetho 的应用后重试。")
+        }
+        let requested = try (string(arguments, key: "processName") ?? string(arguments, key: "target"))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let requested, !requested.isEmpty {
+            if let matched = targets.first(where: {
+                $0.processName == requested || $0.socketName == requested || $0.processName.localizedCaseInsensitiveContains(requested)
+            }) {
+                return matched
+            }
+            let available = targets.map { $0.processName }.joined(separator: ", ")
+            throw MCPError.message("未找到匹配的目标应用：\(requested)。当前可抓包的应用：\(available)")
+        }
+        if targets.count == 1, let only = targets.first {
+            return only
+        }
+        service.selectDevice(device)
+        if let foreground = try? await service.foregroundPackage(),
+           let matched = targets.first(where: { $0.processName == foreground }) {
+            return matched
+        }
+        let available = targets.map { $0.processName }.joined(separator: ", ")
+        throw MCPError.message("发现多个 Stetho 应用：\(available)。请通过 processName 参数指定要抓包的应用。")
+    }
+
+    @discardableResult
+    private static func stopCurrentSession() async -> (inspector: StethoInspector?, count: Int) {
+        activeSessionAutoStopTask?.cancel()
+        activeSessionAutoStopTask = nil
+        guard let inspector = activeInspector else { return (nil, 0) }
+        lastCapturedRequests = inspector.requests
+        let count = inspector.requests.count
+        await inspector.stopAsync()
+        inspector.close()
+        activeInspector = nil
+        activeSessionDevice = nil
+        activeSessionTarget = nil
+        activeSessionStartedAt = nil
+        return (inspector, count)
     }
 
     private static func send(id: Any, result: [String: Any]) { write(["jsonrpc": "2.0", "id": id, "result": result]) }

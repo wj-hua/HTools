@@ -23,6 +23,8 @@ final class StethoInspector: ObservableObject {
     private var connectionTask: Task<Void, Never>?
     private var discoveryTask: Task<Void, Never>?
     private var bodyTask: Task<Void, Never>?
+    private var startContinuation: CheckedContinuation<Void, Error>?
+    private var forwardedPort: Int?
     private var bodyGeneration = UUID()
     private var generation = UUID()
     private var nextCommandID = 0
@@ -43,100 +45,153 @@ final class StethoInspector: ObservableObject {
         self.session = URLSession(configuration: config)
     }
 
+    static func discoverTargets(device: ADBDevice, adb: ADBService) async throws -> [StethoTarget] {
+        let result = await adb.runADB(["-s", device.serial, "shell", "cat", "/proc/net/unix"])
+        guard result.status == 0 else {
+            throw InspectorError.message("无法读取 Stetho 应用：\(result.combinedText)")
+        }
+        return StethoTarget.discover(in: result.stdoutText)
+    }
+
     func discover() {
         guard !isDiscovering else { return }
         isDiscovering = true
         discoveryTask = Task { [weak self] in
             guard let self else { return }
             defer { isDiscovering = false }
-            let result = await adb.runADB(["-s", device.serial, "shell", "cat", "/proc/net/unix"])
-            guard !Task.isCancelled else { return }
-            if result.status == 0 {
-                targets = StethoTarget.discover(in: result.stdoutText)
-            } else {
-                errorMessage = "无法读取 Stetho 应用：\(result.combinedText)"
+            do {
+                targets = try await Self.discoverTargets(device: device, adb: adb)
+            } catch {
+                errorMessage = error.localizedDescription
             }
         }
     }
 
     func start(_ target: StethoTarget) {
+        Task { [weak self] in
+            try? await self?.startAsync(target)
+        }
+    }
+
+    func startAsync(_ target: StethoTarget) async throws {
         stop()
         clear()
         appTitle = nil
         connectedTarget = target
         phase = .connecting
         let token = generation
-        connectionTask = Task { [weak self] in
-            guard let self else { return }
-            var port: Int?
-            do {
-                try Task.checkCancellation()
-                // tcp:0 由 adb 分配空闲端口，每个会话只移除自己创建的转发。
-                let result = await adb.runADB([
-                    "-s", device.serial, "forward", "tcp:0", "localabstract:\(target.socketName)"
-                ])
-                guard result.status == 0, let assigned = Int(result.stdoutText), (1...65_535).contains(assigned) else {
-                    throw InspectorError.message("无法连接 Stetho：\(result.combinedText)")
-                }
-                port = assigned
-                try Task.checkCancellation()
-                let url = URL(string: "http://127.0.0.1:\(assigned)/json")!
-                let (data, response) = try await session.data(from: url)
-                guard (response as? HTTPURLResponse)?.statusCode == 200,
-                      let pages = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-                      let page = pages.first,
-                      let address = page["webSocketDebuggerUrl"] as? String,
-                      let websocketURL = Self.localWebSocketURL(address, port: assigned) else {
-                    throw InspectorError.message("Stetho 未返回可用的调试连接，请重新打开手机上的应用后刷新。")
-                }
-                try Task.checkCancellation()
-                guard generation == token else { throw CancellationError() }
-                appTitle = page["title"] as? String
-                let socket = session.webSocketTask(with: websocketURL)
-                // 正文经 Base64 和 JSON 转义后会变大，单条消息超限会导致整个连接断开。
-                socket.maximumMessageSize = 64 * 1_048_576
-                self.socket = socket
-                socket.resume()
 
-                // 先启动接收循环，再等 Network.enable 的响应，避免双方互相等待。
-                let receiver = Task { [weak self] in
-                    do {
-                        while !Task.isCancelled {
-                            let message = try await socket.receive()
-                            guard let self, self.generation == token else { return }
-                            try self.receive(message)
-                        }
-                    } catch {
-                        guard let self, self.generation == token, !Task.isCancelled else { return }
-                        self.fail(error)
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            self.startContinuation = continuation
+            self.connectionTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try Task.checkCancellation()
+                    // tcp:0 由 adb 分配空闲端口，每个会话只移除自己创建的转发。
+                    let result = await adb.runADB([
+                        "-s", device.serial, "forward", "tcp:0", "localabstract:\(target.socketName)"
+                    ])
+                    guard result.status == 0, let assigned = Int(result.stdoutText.trimmingCharacters(in: .whitespacesAndNewlines)), (1...65_535).contains(assigned) else {
+                        throw InspectorError.message("无法连接 Stetho：\(result.combinedText)")
                     }
+                    self.forwardedPort = assigned
+                    try Task.checkCancellation()
+                    let url = URL(string: "http://127.0.0.1:\(assigned)/json")!
+                    let (data, response) = try await session.data(from: url)
+                    guard (response as? HTTPURLResponse)?.statusCode == 200,
+                          let pages = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                          let page = pages.first,
+                          let address = page["webSocketDebuggerUrl"] as? String,
+                          let websocketURL = Self.localWebSocketURL(address, port: assigned) else {
+                        throw InspectorError.message("Stetho 未返回可用的调试连接，请重新打开手机上的应用后刷新。")
+                    }
+                    try Task.checkCancellation()
+                    guard generation == token else { throw CancellationError() }
+                    appTitle = page["title"] as? String
+                    let socket = session.webSocketTask(with: websocketURL)
+                    // 正文经 Base64 和 JSON 转义后会变大，单条消息超限会导致整个连接断开。
+                    socket.maximumMessageSize = 64 * 1_048_576
+                    self.socket = socket
+                    socket.resume()
+
+                    // 先启动接收循环，再等 Network.enable 的响应，避免双方互相等待。
+                    let receiver = Task { [weak self] in
+                        do {
+                            while !Task.isCancelled {
+                                let message = try await socket.receive()
+                                guard let self, self.generation == token else { return }
+                                try self.receive(message)
+                            }
+                        } catch {
+                            guard let self, self.generation == token, !Task.isCancelled else { return }
+                            self.fail(error)
+                        }
+                    }
+                    defer { receiver.cancel(); socket.cancel(with: .goingAway, reason: nil) }
+                    _ = try await command("Network.enable")
+                    try Task.checkCancellation()
+                    guard generation == token else { throw CancellationError() }
+                    phase = .capturing
+                    resumeStartContinuation(with: .success(()))
+                    await receiver.value
+                } catch {
+                    resumeStartContinuation(with: .failure(error))
+                    if generation == token, !Task.isCancelled { fail(error) }
                 }
-                defer { receiver.cancel(); socket.cancel(with: .goingAway, reason: nil) }
-                _ = try await command("Network.enable")
-                try Task.checkCancellation()
-                guard generation == token else { throw CancellationError() }
-                phase = .capturing
-                await receiver.value
-            } catch {
-                if generation == token, !Task.isCancelled { fail(error) }
-            }
-            if let port {
-                _ = await adb.runADB(["-s", device.serial, "forward", "--remove", "tcp:\(port)"])
+                if let p = self.forwardedPort {
+                    self.forwardedPort = nil
+                    _ = await adb.runADB(["-s", device.serial, "forward", "--remove", "tcp:\(p)"])
+                }
             }
         }
     }
 
-    func stop() {
+    private func resumeStartContinuation(with result: Result<Void, Error>) {
+        if let continuation = startContinuation {
+            startContinuation = nil
+            continuation.resume(with: result)
+        }
+    }
+
+    func stopAsync() async {
+        resumeStartContinuation(with: .failure(CancellationError()))
         generation = UUID()
         bodyGeneration = UUID()
+        socket?.cancel(with: .goingAway, reason: nil)
+        socket = nil
+        bodyTask?.cancel()
+        _ = await bodyTask?.result
+        bodyTask = nil
+        connectionTask?.cancel()
+        _ = await connectionTask?.result
+        connectionTask = nil
+        finishPending(with: CancellationError())
+        markInterruptedRequests()
+        if let port = forwardedPort {
+            forwardedPort = nil
+            _ = await adb.runADB(["-s", device.serial, "forward", "--remove", "tcp:\(port)"])
+        }
+        phase = .idle
+    }
+
+    func stop() {
+        resumeStartContinuation(with: .failure(CancellationError()))
+        generation = UUID()
+        bodyGeneration = UUID()
+        socket?.cancel(with: .goingAway, reason: nil)
+        socket = nil
         connectionTask?.cancel()
         connectionTask = nil
         bodyTask?.cancel()
         bodyTask = nil
-        socket?.cancel(with: .goingAway, reason: nil)
-        socket = nil
         finishPending(with: CancellationError())
         markInterruptedRequests()
+        if let port = forwardedPort {
+            forwardedPort = nil
+            Task { [adb, serial = device.serial] in
+                _ = await adb.runADB(["-s", serial, "forward", "--remove", "tcp:\(port)"])
+            }
+        }
         phase = .idle
     }
 
@@ -157,42 +212,68 @@ final class StethoInspector: ObservableObject {
         guard phase == .capturing,
               let request = requests.first(where: { $0.id == id }), request.isFinished,
               request.body == .notLoaded, request.failure == nil else { return }
-        // 只在选中已完成的请求时读取正文；不为每一条流量复制大块数据。
         bodyTask?.cancel()
         for index in requests.indices where requests[index].body == .loading {
             requests[index].body = .notLoaded
         }
-        update(id) { $0.body = .loading }
+        bodyTask = Task { [weak self] in
+            guard let self else { return }
+            _ = try? await self.loadBodyAsync(for: id)
+        }
+    }
+
+    @discardableResult
+    func loadBodyAsync(for id: UUID) async throws -> StethoRequest.Body {
+        guard let request = requests.first(where: { $0.id == id }) else {
+            throw InspectorError.message("未找到指定的请求。")
+        }
+        switch request.body {
+        case .text, .base64, .unavailable:
+            return request.body
+        case .notLoaded, .loading:
+            break
+        }
+        guard request.isFinished else {
+            throw InspectorError.message("请求尚未完成，暂无法读取响应正文。")
+        }
+        guard phase == .capturing else {
+            throw InspectorError.message("抓包连接已关闭，未缓存的正文无法再读取。请在抓包停止前读取。")
+        }
         let token = generation
         bodyGeneration = UUID()
         let bodyToken = bodyGeneration
-        bodyTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let result = try await command("Network.getResponseBody", params: ["requestId": request.requestID])
-                try Task.checkCancellation()
-                guard generation == token, bodyGeneration == bodyToken else { return }
-                guard let text = result["body"] as? String else {
-                    throw InspectorError.message("Stetho 未返回响应正文。")
-                }
-                let body: StethoRequest.Body
-                if text.utf8.count > Self.bodyLimit {
-                    body = .unavailable("响应正文超过 8 MB，请使用 Chrome DevTools 查看。")
-                } else if result["base64Encoded"] as? Bool == true {
-                    if let data = Data(base64Encoded: text), let decoded = String(data: data, encoding: .utf8) {
-                        body = .text(StethoRequest.formattedBody(decoded))
-                    } else {
-                        body = .base64(text)
-                    }
-                } else {
-                    body = .text(StethoRequest.formattedBody(text))
-                }
-                evictBodies(reserving: body.storedSize, except: id)
-                update(id) { $0.body = body }
-            } catch {
-                guard generation == token, bodyGeneration == bodyToken else { return }
-                update(id) { $0.body = Task.isCancelled ? .notLoaded : .unavailable(error.localizedDescription) }
+        update(id) { $0.body = .loading }
+        do {
+            let result = try await command("Network.getResponseBody", params: ["requestId": request.requestID])
+            try Task.checkCancellation()
+            guard generation == token, bodyGeneration == bodyToken else {
+                throw CancellationError()
             }
+            guard let text = result["body"] as? String else {
+                throw InspectorError.message("Stetho 未返回响应正文。")
+            }
+            let body: StethoRequest.Body
+            if text.utf8.count > Self.bodyLimit {
+                body = .unavailable("响应正文超过 8 MB，请使用 Chrome DevTools 查看。")
+            } else if result["base64Encoded"] as? Bool == true {
+                if let data = Data(base64Encoded: text), let decoded = String(data: data, encoding: .utf8) {
+                    body = .text(StethoRequest.formattedBody(decoded))
+                } else {
+                    body = .base64(text)
+                }
+            } else {
+                body = .text(StethoRequest.formattedBody(text))
+            }
+            evictBodies(reserving: body.storedSize, except: id)
+            update(id) { $0.body = body }
+            return body
+        } catch {
+            guard generation == token, bodyGeneration == bodyToken else {
+                throw CancellationError()
+            }
+            let body: StethoRequest.Body = Task.isCancelled ? .notLoaded : .unavailable(error.localizedDescription)
+            update(id) { $0.body = body }
+            throw error
         }
     }
 

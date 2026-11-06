@@ -108,6 +108,56 @@ private struct ToolMeta {
                 returnType: "JSON 构建信息",
                 paramSummary: "filePath (必填), updateDescription, installType, password, apiKey"
             )
+        case "list_stetho_targets":
+            return ToolMeta(
+                name: name,
+                displayName: "Stetho 应用列表",
+                category: "网络抓包",
+                icon: "network",
+                tint: .blue,
+                returnType: "JSON 列表",
+                paramSummary: "deviceId: 设备 ID (多设备时必填)"
+            )
+        case "capture_stetho_requests":
+            return ToolMeta(
+                name: name,
+                displayName: "即时抓包",
+                category: "网络抓包",
+                icon: "record.circle",
+                tint: .teal,
+                returnType: "JSON 请求与正文",
+                paramSummary: "processName, duration (默认 10s), includeBody, urlFilter"
+            )
+        case "start_stetho_capture":
+            return ToolMeta(
+                name: name,
+                displayName: "启动后台抓包",
+                category: "网络抓包",
+                icon: "play.circle",
+                tint: .green,
+                returnType: "JSON 会话状态",
+                paramSummary: "processName, autoStopSeconds (默认 120s), deviceId"
+            )
+        case "get_stetho_requests":
+            return ToolMeta(
+                name: name,
+                displayName: "查询抓包请求",
+                category: "网络抓包",
+                icon: "magnifyingglass.circle",
+                tint: .indigo,
+                returnType: "JSON 摘要或详情",
+                paramSummary: "requestId, urlFilter, statusFilter, includeBody, limit, clear"
+            )
+        case "stop_stetho_capture":
+            return ToolMeta(
+                name: name,
+                displayName: "停止后台抓包",
+                category: "网络抓包",
+                icon: "stop.circle",
+                tint: .red,
+                returnType: "JSON 统计",
+                paramSummary: "无参数 (停止会话并释放资源)"
+            )
         default:
             return ToolMeta(
                 name: name,
