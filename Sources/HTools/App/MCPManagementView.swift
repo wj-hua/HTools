@@ -98,6 +98,16 @@ private struct ToolMeta {
                 returnType: "图片 (PNG/JPEG)",
                 paramSummary: "deviceId: 设备 ID (多设备时必填)"
             )
+        case "upload_to_pgyer":
+            return ToolMeta(
+                name: name,
+                displayName: "蒲公英安装包上传",
+                category: "应用分发",
+                icon: "arrow.up.circle",
+                tint: .orange,
+                returnType: "JSON 构建信息",
+                paramSummary: "filePath (必填), updateDescription, installType, password, apiKey"
+            )
         default:
             return ToolMeta(
                 name: name,

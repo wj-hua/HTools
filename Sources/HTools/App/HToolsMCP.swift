@@ -22,7 +22,17 @@ enum HToolsMCP {
         ["name": "list_devices", "description": "列出 ADB 和 HDC 设备及连接状态。", "inputSchema": emptySchema],
         ["name": "get_device_info", "description": "查询已连接设备的信息。", "inputSchema": deviceSchema],
         ["name": "get_foreground_app", "description": "查询已连接设备当前前台应用。", "inputSchema": deviceSchema],
-        ["name": "capture_device_screen", "description": "截取已连接手机的当前屏幕并返回图片。", "inputSchema": deviceSchema]
+        ["name": "capture_device_screen", "description": "截取已连接手机的当前屏幕并返回图片。", "inputSchema": deviceSchema],
+        ["name": "upload_to_pgyer", "description": "上传 APK（或 IPA、HAP）安装包到蒲公英分发平台，返回版本信息、下载链接、二维码和分享文案。", "inputSchema": [
+            "type": "object", "properties": [
+                "filePath": ["type": "string", "description": "安装包文件路径（绝对路径或带 ~ 路径，支持 .apk、.ipa、.hap）"],
+                "path": ["type": "string", "description": "filePath 的别名"],
+                "updateDescription": ["type": "string", "description": "版本更新说明，可选"],
+                "installType": ["type": "string", "enum": ["public", "password", "invite"], "description": "安装方式：public（公开，默认）、password（密码安装）、invite（邀请安装）"],
+                "password": ["type": "string", "description": "安装密码（当 installType 为 password 时必填）"],
+                "apiKey": ["type": "string", "description": "蒲公英 API Key。默认自动从 HTools 钥匙串读取，如未配置可在参数中传入"]
+            ], "additionalProperties": false
+        ]]
     ]
 
     static func run() async {
@@ -47,7 +57,7 @@ enum HToolsMCP {
                     do {
                         guard let name = params["name"] as? String else { throw MCPError.message("缺少工具名称") }
                         guard params["arguments"] == nil || params["arguments"] is [String: Any] else { throw MCPError.message("工具参数必须是对象") }
-                        guard MCPSettings.isEnabled(name) else { throw MCPError.message("该工具已在 HTools 的 MCP 管理中关闭") }
+                        guard MCPSettings.isEnabled(name == "upload_apk_to_pgyer" ? "upload_to_pgyer" : name) else { throw MCPError.message("该工具已在 HTools 的 MCP 管理中关闭") }
                         let value = try await call(name, arguments: params["arguments"] as? [String: Any] ?? [:])
                         if let image = value as? ScreenImage {
                             send(id: id, result: ["content": [
@@ -156,6 +166,84 @@ enum HToolsMCP {
             }
             let info = try await service.deviceInfo()
             return ["deviceId": device.identifier.selectionKey, "manufacturer": info.manufacturer, "model": info.model, "systemVersion": info.systemVersion, "apiLevel": info.apiLevel, "resolution": info.resolution, "battery": info.battery, "storage": info.storage, "ipAddress": info.ipAddress]
+        case "upload_to_pgyer", "upload_apk_to_pgyer":
+            try validate(arguments, allowed: ["filePath", "path", "updateDescription", "installType", "password", "apiKey"])
+            let rawPath = try (string(arguments, key: "filePath") ?? string(arguments, key: "path"))
+            guard let rawPath, !rawPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw MCPError.message("缺少 filePath 参数（请提供安装包文件路径）")
+            }
+            let expandedPath = (rawPath as NSString).expandingTildeInPath
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir), !isDir.boolValue else {
+                throw MCPError.message("指定的文件不存在或不是有效文件：\(rawPath)")
+            }
+            let fileURL = URL(fileURLWithPath: expandedPath)
+            let ext = fileURL.pathExtension.lowercased()
+            guard PgyerService.supportedExtensions.contains(ext) else {
+                let supported = PgyerService.supportedExtensions.sorted().joined(separator: ", ")
+                throw MCPError.message("不支持的文件类型：.\(ext)。仅支持 \(supported) 文件。")
+            }
+
+            let apiKeyArgument = try string(arguments, key: "apiKey")?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let apiKey: String
+            if let apiKeyArgument, !apiKeyArgument.isEmpty {
+                apiKey = apiKeyArgument
+            } else if let savedKey = PgyerKeychain.load(), !savedKey.isEmpty {
+                apiKey = savedKey
+            } else {
+                throw MCPError.message("未配置蒲公英 API Key。请在 HTools 应用中的「蒲公英分发」设置，或在调用参数中传入 apiKey。可在 https://www.pgyer.com/account/api 获取。")
+            }
+
+            let installTypeStr = try string(arguments, key: "installType") ?? "public"
+            let installType: PgyerInstallType
+            switch installTypeStr {
+            case "public": installType = .public
+            case "password": installType = .password
+            case "invite": installType = .invite
+            default: throw MCPError.message("installType 必须是 public、password 或 invite")
+            }
+
+            let password = try string(arguments, key: "password") ?? ""
+            if installType == .password && password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw MCPError.message("当 installType 为 password 时，必须提供 password 参数")
+            }
+
+            let updateDescription = try string(arguments, key: "updateDescription") ?? ""
+            let options = PgyerService.Options(
+                updateDescription: updateDescription,
+                installType: installType,
+                password: password
+            )
+
+            let build = try await PgyerService.upload(fileURL: fileURL, apiKey: apiKey, options: options) { _ in }
+            var finalBuild = build
+            finalBuild.uploadedAt = Date()
+            finalBuild.localInstallType = options.installType.rawValue
+            finalBuild.localPassword = options.installType == .password ? options.password : nil
+            finalBuild.localUpdateDescription = options.updateDescription
+            finalBuild.localFileName = fileURL.lastPathComponent
+            finalBuild.localFileSizeBytes = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+
+            PgyerUploader.recordBuildToHistory(finalBuild)
+
+            return [
+                "success": true,
+                "appName": finalBuild.buildName as Any? ?? NSNull(),
+                "version": finalBuild.buildVersion as Any? ?? NSNull(),
+                "buildVersionNo": finalBuild.buildVersionNo as Any? ?? NSNull(),
+                "displayVersion": finalBuild.displayVersion,
+                "platform": finalBuild.platform.rawValue,
+                "fileSize": finalBuild.formattedFileSize,
+                "downloadURL": finalBuild.downloadURL?.absoluteString as Any? ?? NSNull(),
+                "fixedURL": finalBuild.fixedURL?.absoluteString as Any? ?? NSNull(),
+                "shortcutURL": finalBuild.shortcutURL?.absoluteString as Any? ?? NSNull(),
+                "qrCodeURL": finalBuild.qrCodeURL?.absoluteString as Any? ?? NSNull(),
+                "iconURL": finalBuild.iconURL?.absoluteString as Any? ?? NSNull(),
+                "buildKey": finalBuild.buildKey as Any? ?? NSNull(),
+                "installType": finalBuild.installTypeDescription,
+                "updateDescription": finalBuild.localUpdateDescription as Any? ?? NSNull(),
+                "shareText": finalBuild.shareText
+            ]
         default: throw MCPError.message("未知工具：\(name)")
         }
     }

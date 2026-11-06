@@ -74,6 +74,9 @@ struct DistributionView: View {
                 select(url)
             }
         }
+        .onAppear {
+            uploader.reloadRecentBuilds()
+        }
     }
 
     private var subtitle: String {

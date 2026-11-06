@@ -149,6 +149,35 @@ struct PgyerBuild: Codable, Sendable, Equatable, Identifiable {
         return "未知大小"
     }
 
+    var shareText: String {
+        var lines: [String] = []
+        let appTitle = buildName ?? "应用"
+        lines.append("【\(appTitle)】最新测试版本已发布")
+
+        var versionParts: [String] = []
+        if let v = buildVersion, !v.isEmpty { versionParts.append("v\(v)") }
+        if let no = buildVersionNo, !no.isEmpty { versionParts.append("Build \(no)") }
+        if !versionParts.isEmpty {
+            lines.append("版本：\(versionParts.joined(separator: " "))")
+        }
+
+        if let url = downloadURL {
+            lines.append("下载链接：\(url.absoluteString)")
+        }
+
+        if let pwd = localPassword, !pwd.isEmpty {
+            lines.append("安装密码：\(pwd)")
+        } else if let it = localInstallType, it == PgyerInstallType.invite.rawValue {
+            lines.append("安装方式：邀请安装（需管理员授权）")
+        }
+
+        if let desc = localUpdateDescription, !desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append("更新说明：\n\(desc)")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
     enum CodingKeys: String, CodingKey {
         case buildKey, buildType, buildName, buildVersion, buildVersionNo
         case buildShortcutUrl, buildQRCodeURL, buildIcon, buildDescription

@@ -21,8 +21,8 @@ final class PgyerUploader: ObservableObject {
     @Published var toastMessage: String?
 
     private var uploadTask: Task<Void, Never>?
-    private let recentBuildsKey = "HTools.pgyer.recentBuilds"
-    private let maxRecentCount = 15
+    static let recentBuildsKey = "HTools.pgyer.recentBuilds"
+    static let maxRecentCount = 15
 
     var isUploading: Bool { phase != .idle }
 
@@ -120,32 +120,7 @@ final class PgyerUploader: ObservableObject {
 
     func copyShareText(for target: PgyerBuild? = nil) {
         guard let b = target ?? lastBuild else { return }
-        var lines: [String] = []
-        let appTitle = b.buildName ?? "应用"
-        lines.append("【\(appTitle)】最新测试版本已发布")
-
-        var versionParts: [String] = []
-        if let v = b.buildVersion, !v.isEmpty { versionParts.append("v\(v)") }
-        if let no = b.buildVersionNo, !no.isEmpty { versionParts.append("Build \(no)") }
-        if !versionParts.isEmpty {
-            lines.append("版本：\(versionParts.joined(separator: " "))")
-        }
-
-        if let url = b.downloadURL {
-            lines.append("下载链接：\(url.absoluteString)")
-        }
-
-        if let pwd = b.localPassword, !pwd.isEmpty {
-            lines.append("安装密码：\(pwd)")
-        } else if let it = b.localInstallType, it == PgyerInstallType.invite.rawValue {
-            lines.append("安装方式：邀请安装（需管理员授权）")
-        }
-
-        if let desc = b.localUpdateDescription, !desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("更新说明：\n\(desc)")
-        }
-
-        let text = lines.joined(separator: "\n")
+        let text = b.shareText
         if Pasteboard.copy(text) {
             toastMessage = "分享文案已复制"
         }
@@ -193,6 +168,10 @@ final class PgyerUploader: ObservableObject {
 
     // MARK: - 历史记录
 
+    func reloadRecentBuilds() {
+        loadRecentBuilds()
+    }
+
     func deleteRecentBuild(id: String) {
         recentBuilds.removeAll { $0.id == id }
         if lastBuild?.id == id {
@@ -203,20 +182,33 @@ final class PgyerUploader: ObservableObject {
 
     func clearRecentBuilds() {
         recentBuilds.removeAll()
-        persistRecentBuilds()
+        lastBuild = nil
+        UserDefaults.standard.removeObject(forKey: Self.recentBuildsKey)
+    }
+
+    static func recordBuildToHistory(_ build: PgyerBuild) {
+        var builds: [PgyerBuild] = []
+        if let data = UserDefaults.standard.data(forKey: recentBuildsKey),
+           let loaded = try? JSONDecoder().decode([PgyerBuild].self, from: data) {
+            builds = loaded
+        }
+        builds.removeAll { $0.id == build.id }
+        builds.insert(build, at: 0)
+        if builds.count > maxRecentCount {
+            builds = Array(builds.prefix(maxRecentCount))
+        }
+        if let data = try? JSONEncoder().encode(builds) {
+            UserDefaults.standard.set(data, forKey: recentBuildsKey)
+        }
     }
 
     private func recordRecentBuild(_ build: PgyerBuild) {
-        recentBuilds.removeAll { $0.id == build.id }
-        recentBuilds.insert(build, at: 0)
-        if recentBuilds.count > maxRecentCount {
-            recentBuilds = Array(recentBuilds.prefix(maxRecentCount))
-        }
-        persistRecentBuilds()
+        Self.recordBuildToHistory(build)
+        loadRecentBuilds()
     }
 
     private func loadRecentBuilds() {
-        guard let data = UserDefaults.standard.data(forKey: recentBuildsKey),
+        guard let data = UserDefaults.standard.data(forKey: Self.recentBuildsKey),
               let builds = try? JSONDecoder().decode([PgyerBuild].self, from: data) else {
             return
         }
@@ -228,7 +220,7 @@ final class PgyerUploader: ObservableObject {
 
     private func persistRecentBuilds() {
         if let data = try? JSONEncoder().encode(recentBuilds) {
-            UserDefaults.standard.set(data, forKey: recentBuildsKey)
+            UserDefaults.standard.set(data, forKey: Self.recentBuildsKey)
         }
     }
 
