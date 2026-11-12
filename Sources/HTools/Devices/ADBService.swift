@@ -481,6 +481,39 @@ final class ADBService {
         _ = try? await runShell(["am", "broadcast", "-a", "android.intent.action.LOCALE_CHANGED"])
     }
 
+    /// 读取设备最近的日志：Android 用 logcat，鸿蒙用 hilog。level 为最低级别（V/D/I/W/E/F）。
+    func recentLogs(packageName: String?, level: String, crashOnly: Bool) async throws -> [String] {
+        let device = try await activeDevice()
+        var pid: String?
+        if let packageName {
+            let result = await runOnDevice(["shell", "pidof", packageName], device: device)
+            pid = result.stdoutText.split(separator: " ").first.map(String.init)
+            guard pid != nil else {
+                throw ADBBarError.commandFailed("应用 \(packageName) 未在运行，无法按进程筛选日志。应用已崩溃时可改用 crashOnly 查看崩溃日志。")
+            }
+        }
+
+        let arguments: [String]
+        switch device.bridge {
+        case .adb:
+            arguments = ["logcat", "-d", "-v", "threadtime"]
+                + (crashOnly ? ["-b", "crash"] : [])
+                + (pid.map { ["--pid=\($0)"] } ?? [])
+                + ["*:\(level)"]
+        case .hdc:
+            guard !crashOnly else { throw ADBBarError.unsupportedFeature("崩溃日志", device.bridge) }
+            let levels = ["D", "I", "W", "E", "F"].drop { $0 != level }
+            arguments = ["shell", "hilog", "-x"]
+                + (pid.map { ["-P", $0] } ?? [])
+                + (level == "V" || level == "D" ? [] : ["-L", levels.joined(separator: ",")])
+        }
+        let result = await runOnDevice(arguments, device: device)
+        guard result.status == 0 else { throw ADBBarError.commandFailed(result.combinedText) }
+        return result.stdoutText
+            .components(separatedBy: .newlines)
+            .filter { !$0.isEmpty && !$0.hasPrefix("--------- beginning of") }
+    }
+
     func launchApp(packageName: String) async throws {
         let device = try await activeDevice()
         try await launchApp(packageName: packageName, device: device)

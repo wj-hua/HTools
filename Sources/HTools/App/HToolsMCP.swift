@@ -1,7 +1,7 @@
 import Foundation
 import ImageIO
 
-/// A local, read-only MCP server. stdout is reserved for newline-delimited JSON-RPC.
+/// A local MCP server. stdout is reserved for newline-delimited JSON-RPC.
 @MainActor
 enum HToolsMCP {
     private static let versions = ["2025-06-18", "2025-03-26", "2024-11-05"]
@@ -23,6 +23,16 @@ enum HToolsMCP {
         ["name": "get_device_info", "description": "查询已连接设备的信息。", "inputSchema": deviceSchema],
         ["name": "get_foreground_app", "description": "查询已连接设备当前前台应用。", "inputSchema": deviceSchema],
         ["name": "capture_device_screen", "description": "截取已连接手机的当前屏幕并返回图片。", "inputSchema": deviceSchema],
+        ["name": "get_logcat", "description": "读取已连接设备最近的日志（Android 为 logcat，鸿蒙为 hilog），可按应用、级别和关键字筛选，适合分析崩溃和异常。", "inputSchema": [
+            "type": "object", "properties": [
+                "deviceId": ["type": "string", "description": "设备 ID，来自 list_devices；多设备时必填"],
+                "packageName": ["type": "string", "description": "只看该应用进程的日志（应用需正在运行）；crashOnly 时忽略"],
+                "level": ["type": "string", "enum": ["V", "D", "I", "W", "E", "F"], "description": "最低日志级别，默认 V（全部）"],
+                "keyword": ["type": "string", "description": "只返回包含该关键字的行（不区分大小写），在整个日志缓冲区内查找"],
+                "lines": ["type": "integer", "description": "最多返回的行数（默认 200，范围 1-1000），取最新的部分"],
+                "crashOnly": ["type": "boolean", "description": "只读取崩溃缓冲区（仅 Android），应用崩溃退出后也能查看，默认 false"]
+            ], "additionalProperties": false
+        ]],
         ["name": "upload_to_pgyer", "description": "上传 APK（或 IPA、HAP）安装包到蒲公英分发平台，返回版本信息、下载链接、二维码和分享文案。", "inputSchema": [
             "type": "object", "properties": [
                 "filePath": ["type": "string", "description": "安装包文件路径（绝对路径或带 ~ 路径，支持 .apk、.ipa、.hap）"],
@@ -380,6 +390,28 @@ enum HToolsMCP {
                 "status": "stopped",
                 "totalCaptured": count,
                 "message": "Stetho 抓包已停止，ADB 端口转发与调试连接已断开。"
+            ]
+        case "get_logcat":
+            try validate(arguments, allowed: ["deviceId", "packageName", "level", "keyword", "lines", "crashOnly"])
+            let service = try ADBService(requireSelectedDevice: true)
+            let device = try await resolveConnectedDevice(arguments: arguments, service: service)
+            service.selectDevice(device)
+            let level = try string(arguments, key: "level") ?? "V"
+            guard ["V", "D", "I", "W", "E", "F"].contains(level) else { throw MCPError.message("level 必须是 V、D、I、W、E 或 F") }
+            let crashOnly = try bool(arguments, key: "crashOnly") ?? false
+            let packageName = crashOnly ? nil : try string(arguments, key: "packageName").flatMap { $0.isEmpty ? nil : $0 }
+            let keyword = try string(arguments, key: "keyword").flatMap { $0.isEmpty ? nil : $0 }
+            let limit = min(max(try int(arguments, key: "lines") ?? 200, 1), 1000)
+            var lines = try await service.recentLogs(packageName: packageName, level: level, crashOnly: crashOnly)
+            if let keyword { lines = lines.filter { $0.localizedCaseInsensitiveContains(keyword) } }
+            lines = Array(lines.suffix(limit))
+            return [
+                "deviceId": device.identifier.selectionKey,
+                "source": device.bridge == .adb ? (crashOnly ? "logcat crash" : "logcat") : "hilog",
+                "packageName": packageName as Any? ?? NSNull(),
+                "level": level,
+                "count": lines.count,
+                "log": lines.joined(separator: "\n")
             ]
         case "upload_to_pgyer", "upload_apk_to_pgyer":
             try validate(arguments, allowed: ["filePath", "path", "updateDescription", "installType", "password", "apiKey"])

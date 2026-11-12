@@ -98,6 +98,16 @@ private struct ToolMeta {
                 returnType: "图片 (PNG/JPEG)",
                 paramSummary: "deviceId: 设备 ID (多设备时必填)"
             )
+        case "get_logcat":
+            return ToolMeta(
+                name: name,
+                displayName: "设备日志",
+                category: "手机调试",
+                icon: "doc.text.magnifyingglass",
+                tint: .orange,
+                returnType: "日志文本",
+                paramSummary: "packageName, level, keyword, lines (默认 200), crashOnly"
+            )
         case "upload_to_pgyer":
             return ToolMeta(
                 name: name,
