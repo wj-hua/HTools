@@ -6,6 +6,7 @@ struct AntigravityAccount: Identifiable, Hashable {
     let name: String
     let email: String
     let expiry: Date?
+    let hasRefreshToken: Bool
 
     var id: String { name }
 
@@ -19,16 +20,30 @@ struct AntigravityAccount: Identifiable, Hashable {
         guard let expiry else { return false }
         return expiry < Date()
     }
+
+    /// 缺少 refresh_token 且 access_token 已过期，才是真正需要重新登录。
+    var needsRelogin: Bool {
+        isExpired && !hasRefreshToken
+    }
 }
 
 @MainActor
 final class AntigravityAccountStore: ObservableObject {
+    enum BusyAction: Equatable {
+        case saving
+        case switching(String)
+    }
+
     @Published private(set) var accounts: [AntigravityAccount] = []
     @Published private(set) var currentEmail: String?
     @Published private(set) var currentExpiry: Date?
-    @Published private(set) var isBusy = false
+    @Published private(set) var currentHasRefreshToken = false
+    @Published private(set) var busyAction: BusyAction?
+    @Published private(set) var isRefreshing = false
     @Published var statusMessage: String?
     @Published var errorMessage: String?
+
+    var isBusy: Bool { busyAction != nil }
 
     /// 钥匙串条目的服务名与账号名，由 antigravity CLI 固定使用。
     private static let keychainService = "gemini"
@@ -53,14 +68,20 @@ final class AntigravityAccountStore: ObservableObject {
     }
 
     func refresh() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
         let blob = await Self.readBlob()
         if let blob, let credential = Self.decode(blob) {
             currentEmail = credential.email
             currentExpiry = credential.expiry
+            currentHasRefreshToken = credential.hasRefreshToken
             errorMessage = nil
         } else {
             currentEmail = nil
             currentExpiry = nil
+            currentHasRefreshToken = false
         }
         accounts = Self.loadSnapshots()
     }
@@ -82,8 +103,8 @@ final class AntigravityAccountStore: ObservableObject {
             return
         }
 
-        isBusy = true
-        defer { isBusy = false }
+        busyAction = .saving
+        defer { busyAction = nil }
         do {
             try FileManager.default.createDirectory(at: Self.storeURL, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let url = Self.storeURL.appendingPathComponent("\(name).kc")
@@ -109,8 +130,8 @@ final class AntigravityAccountStore: ObservableObject {
             return
         }
 
-        isBusy = true
-        defer { isBusy = false }
+        busyAction = .switching(name)
+        defer { busyAction = nil }
         // 切走之前先把当前账号刷新过的 token 写回它自己的快照，避免续期丢失。
         await Self.syncCurrentBack()
         let written = await Self.writeBlob(blob)
@@ -181,6 +202,7 @@ final class AntigravityAccountStore: ObservableObject {
     struct Credential {
         let email: String?
         let expiry: Date?
+        let hasRefreshToken: Bool
         let raw: [String: Any]
     }
 
@@ -190,9 +212,11 @@ final class AntigravityAccountStore: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         let token = json["token"] as? [String: Any]
+        let refreshToken = token?["refresh_token"] as? String
         return Credential(
             email: json["id_token_email"] as? String,
             expiry: (token?["expiry"] as? String).flatMap(parseDate),
+            hasRefreshToken: !(refreshToken ?? "").isEmpty,
             raw: json
         )
     }
@@ -218,7 +242,8 @@ final class AntigravityAccountStore: ObservableObject {
                 return AntigravityAccount(
                     name: url.deletingPathExtension().lastPathComponent,
                     email: credential.email ?? "未知邮箱",
-                    expiry: credential.expiry
+                    expiry: credential.expiry,
+                    hasRefreshToken: credential.hasRefreshToken
                 )
             }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
