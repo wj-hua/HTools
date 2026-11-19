@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | Token 用量 | used-token | 按小时/天/周/月/总计统计 Claude Code、Codex、agy、DeepSeek Harness 的 Token，含趋势图与时区选择 |
 | 进程与内存 | used-token | 页面可见时每 3 秒刷新，可结束单个或全部进程 |
+| Google 账号 | 新增 | 管理 agy 的多个 Gemini 账号：把当前登录存成快照、一键切回（写入 macOS 登录钥匙串，不走浏览器），与命令行 `agy-acct` 共用 `~/.agy/accounts` |
 | 常用文本 | clipboard | 管理标签与文本；在任意应用按 `⌥ Space` 呼出原有的快速粘贴面板 |
 | 跨设备粘贴板 | 新增 | Mac 自动上传文本与图片至阿里云；Android 复制、下载；仅保留最新 50 条 |
 | 翻译 | HTranslate | 截图（`F4`）或粘贴图片，本机 Vision 识别文字，再用自己配置的 OpenAI 兼容接口翻译 |

@@ -5,6 +5,7 @@ struct TokenUsageView: View {
     @ObservedObject var store: UsageStore
     @AppStorage("tokenGranularity") private var granularity: Granularity = .day
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var selectedTrendDate: Date?
 
     private var buckets: [UsageBucket] {
         store.buckets(for: granularity)
@@ -183,7 +184,7 @@ struct TokenUsageView: View {
         let tokens: Int
     }
 
-    private var trendPoints: [TrendPoint] {
+    private var trendBuckets: [UsageBucket] {
         let limit: Int
         switch granularity {
         case .hour: limit = 24
@@ -191,7 +192,11 @@ struct TokenUsageView: View {
         case .week, .month: limit = 12
         case .total: limit = 0
         }
-        return buckets.prefix(limit).reversed().flatMap { bucket in
+        return Array(buckets.prefix(limit).reversed())
+    }
+
+    private var trendPoints: [TrendPoint] {
+        trendBuckets.flatMap { bucket in
             tools.compactMap { tool -> TrendPoint? in
                 guard let amount = bucket.totalsByTool[tool]?.totalTokens, amount > 0 else { return nil }
                 return TrendPoint(id: "\(bucket.id)-\(tool.id)", date: bucket.startDate, tool: tool, tokens: amount)
@@ -208,28 +213,75 @@ struct TokenUsageView: View {
         }
     }
 
+    private var chartCalendar: Calendar {
+        var calendar = Calendar.current
+        calendar.timeZone = store.timeZone
+        return calendar
+    }
+
+    private var selectedTrendBucket: UsageBucket? {
+        guard let selectedTrendDate,
+              let interval = chartCalendar.dateInterval(of: chartUnit, for: selectedTrendDate) else { return nil }
+        return trendBuckets.first { $0.startDate == interval.start && $0.combinedTotal > 0 }
+    }
+
     private var trendCard: some View {
-        Card(padding: 20) {
+        let selectedBucket = selectedTrendBucket
+        return Card(padding: 20) {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeader("趋势", systemImage: "chart.bar.fill") {
                     Text("最近 \(Set(trendPoints.map(\.date)).count) 个\(granularity.rawValue)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Chart(trendPoints) { point in
-                    BarMark(
-                        x: .value("时间", point.date, unit: chartUnit),
-                        y: .value("Tokens", point.tokens)
-                    )
-                    .foregroundStyle(by: .value("工具", point.tool.rawValue))
-                    .cornerRadius(3)
+                Chart {
+                    ForEach(trendPoints) { point in
+                        BarMark(
+                            x: .value("时间", point.date, unit: chartUnit),
+                            y: .value("Tokens", point.tokens)
+                        )
+                        .foregroundStyle(by: .value("工具", point.tool.rawValue))
+                        .cornerRadius(3)
+                        .opacity(selectedBucket == nil || selectedBucket?.startDate == point.date ? 1 : 0.35)
+                    }
+                    if let selectedBucket {
+                        RuleMark(x: .value("时间", selectedBucket.startDate, unit: chartUnit))
+                            .foregroundStyle(.secondary)
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            .annotation(
+                                position: .top,
+                                spacing: 8,
+                                overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))
+                            ) {
+                                trendDetails(selectedBucket)
+                                    .allowsHitTesting(false)
+                            }
+                    }
                 }
                 .environment(\.timeZone, store.timeZone)
-                .environment(\.calendar, {
-                    var calendar = Calendar.current
-                    calendar.timeZone = store.timeZone
-                    return calendar
-                }())
+                .environment(\.calendar, chartCalendar)
+                .chartOverlay { proxy in
+                    GeometryReader { geometry in
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onContinuousHover { phase in
+                                switch phase {
+                                case .active(let location):
+                                    guard let plotFrame = proxy.plotFrame,
+                                          geometry[plotFrame].contains(location) else {
+                                        selectedTrendDate = nil
+                                        return
+                                    }
+                                    selectedTrendDate = proxy.value(
+                                        atX: location.x - geometry[plotFrame].minX,
+                                        as: Date.self
+                                    )
+                                case .ended:
+                                    selectedTrendDate = nil
+                                }
+                            }
+                    }
+                }
                 .chartForegroundStyleScale(
                     domain: tools.map(\.rawValue),
                     range: tools.map(\.accentColor)
@@ -248,6 +300,52 @@ struct TokenUsageView: View {
                 .frame(height: 220)
             }
         }
+        .onChange(of: granularity) { selectedTrendDate = nil }
+        .onChange(of: store.timeZoneIdentifier) { selectedTrendDate = nil }
+    }
+
+    private func trendDetails(_ bucket: UsageBucket) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(trendPeriodLabel(bucket))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("总用量：\(TokenFormat.string(bucket.combinedTotal)) tokens")
+                .font(.callout.weight(.semibold))
+            ForEach(sortedTools(in: bucket)) { tool in
+                let amount = bucket.totalsByTool[tool]?.totalTokens ?? 0
+                if amount > 0 {
+                    HStack(spacing: 8) {
+                        Circle().fill(tool.accentColor).frame(width: 7, height: 7)
+                        Text(tool.rawValue)
+                        Spacer(minLength: 16)
+                        Text(TokenFormat.string(amount))
+                    }
+                    .font(.caption)
+                }
+            }
+        }
+        .monospacedDigit()
+        .padding(12)
+        .fixedSize()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func trendPeriodLabel(_ bucket: UsageBucket) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.calendar = chartCalendar
+        formatter.timeZone = store.timeZone
+        switch granularity {
+        case .hour: formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        case .day, .week: formatter.dateFormat = "yyyy年M月d日"
+        case .month, .total: formatter.dateFormat = "yyyy年M月"
+        }
+        let start = formatter.string(from: bucket.startDate)
+        if granularity == .week,
+           let end = chartCalendar.date(byAdding: .day, value: 6, to: bucket.startDate) {
+            return "\(start) – \(formatter.string(from: end))"
+        }
+        return start
     }
 
     // MARK: - 各工具明细

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ProcessesView: View {
     @ObservedObject var monitor: ProcessMonitor
-    @StateObject private var systemMonitor = SystemProcessMonitor()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// 已展开的工具（逗号分隔的 Tool.id）。默认为空，即全部收起；持久化以便下次打开保持原样。
     @AppStorage("expandedProcessTools") private var expandedRaw = ""
@@ -34,8 +33,6 @@ struct ProcessesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 overview
-
-                SystemProcessCard(monitor: systemMonitor)
 
                 Text("AI 编码工具")
                     .font(.headline)
@@ -95,12 +92,6 @@ struct ProcessesView: View {
         // 页面可见时高频轮询，离开页面后降频，只维持侧边栏角标。
         .onAppear { monitor.startMonitoring(interval: ProcessMonitor.foregroundInterval) }
         .onDisappear { monitor.startMonitoring(interval: ProcessMonitor.backgroundInterval) }
-        .task {
-            while !Task.isCancelled {
-                await systemMonitor.refresh()
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-            }
-        }
     }
 
     private var overview: some View {
@@ -157,104 +148,6 @@ struct ProcessesView: View {
             }
         }
         .padding(.horizontal, 4)
-    }
-}
-
-private struct SystemProcessCard: View {
-    @ObservedObject var monitor: SystemProcessMonitor
-    @State private var metric: Metric = .cpu
-
-    private enum Metric: String, CaseIterable, Identifiable {
-        case cpu = "CPU", gpu = "GPU", memory = "内存"
-        var id: String { rawValue }
-    }
-
-    private var rankedProcesses: [SystemProcessUsage] {
-        switch metric {
-        case .cpu:
-            return Array(monitor.processes.filter { ($0.cpuPercent ?? 0) > 0 }
-                .sorted { ($0.cpuPercent ?? 0) > ($1.cpuPercent ?? 0) }.prefix(10))
-        case .gpu:
-            return Array(monitor.processes.filter { ($0.gpuPercent ?? 0) > 0 }
-                .sorted { ($0.gpuPercent ?? 0) > ($1.gpuPercent ?? 0) }.prefix(10))
-        case .memory:
-            return Array(monitor.processes.filter { $0.memoryBytes > 0 }
-                .sorted { $0.memoryBytes > $1.memoryBytes }.prefix(10))
-        }
-    }
-
-    var body: some View {
-        Card(padding: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("高占用进程")
-                            .font(.headline)
-                        Text("可读取的系统进程 · 前 10 名 · 每 3 秒刷新")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Picker("排序依据", selection: $metric) {
-                        ForEach(Metric.allCases) { item in
-                            Text(item.rawValue).tag(item)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 210)
-                }
-
-                if !monitor.hasCaptured {
-                    Text("正在采集进程数据…")
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
-                        .padding(.vertical, 8)
-                } else if metric == .gpu && !monitor.gpuAvailable {
-                    Text("当前系统未提供逐进程 GPU 数据。")
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
-                        .padding(.vertical, 8)
-                } else if metric != .memory && !monitor.hasSample {
-                    Text("正在采集数据，等待下一次刷新…")
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
-                        .padding(.vertical, 8)
-                } else if rankedProcesses.isEmpty {
-                    Text("暂无可显示的进程。")
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
-                        .padding(.vertical, 8)
-                } else {
-                    ForEach(rankedProcesses) { process in
-                        HStack(spacing: 10) {
-                            Text(String(process.pid))
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 56, alignment: .leading)
-                            Text(process.name).lineLimit(1)
-                            Spacer(minLength: 8)
-                            Text(value(for: process))
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.subheadline)
-                    }
-                }
-                Text(metric == .memory ? "内存为进程常驻内存（RSS）。" :
-                     metric == .cpu ? "CPU 为单核心占用率，多核心时可超过 100%。" :
-                     "GPU 为采样期间的累计执行时间占比，可能超过 100%。")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    private func value(for process: SystemProcessUsage) -> String {
-        switch metric {
-        case .cpu: return String(format: "%.1f%%", process.cpuPercent ?? 0)
-        case .gpu: return String(format: "%.1f%%", process.gpuPercent ?? 0)
-        case .memory: return MemoryFormat.string(process.memoryBytes)
-        }
     }
 }
 

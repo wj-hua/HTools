@@ -4,6 +4,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case tokens
     case processes
     case mcp
+    case accounts
     case snippets
     case cloudClipboard
     case snip
@@ -22,6 +23,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .tokens: return "Token 用量"
         case .processes: return "进程与内存"
         case .mcp: return "MCP 管理"
+        case .accounts: return "Google 账号"
         case .snippets: return "常用文本"
         case .cloudClipboard: return "跨设备粘贴板"
         case .snip: return "截图"
@@ -40,6 +42,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .tokens: return "chart.bar.xaxis"
         case .processes: return "memorychip"
         case .mcp: return "point.3.connected.trianglepath.dotted"
+        case .accounts: return "person.crop.circle.badge.checkmark"
         case .snippets: return "text.quote"
         case .cloudClipboard: return "doc.on.clipboard"
         case .snip: return "camera.viewfinder"
@@ -87,6 +90,8 @@ struct RootView: View {
             ProcessesView(monitor: model.processMonitor)
         case .mcp:
             MCPManagementView()
+        case .accounts:
+            AccountsView(store: model.antigravityAccounts)
         case .snippets:
             SnippetsView(store: model.pasteStore)
         case .cloudClipboard:
@@ -124,6 +129,7 @@ private struct SidebarView: View {
                 row(.tokens)
                 row(.processes, badge: processMonitor.totalProcessCount)
                 row(.mcp)
+                row(.accounts)
             }
             Section("效率") {
                 row(.snippets)

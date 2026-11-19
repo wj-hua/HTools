@@ -9,6 +9,9 @@ final class AppModel: ObservableObject {
     let usageStore = UsageStore()
     let processMonitor = ProcessMonitor()
 
+    // Google 账号（antigravity CLI 多账号切换）
+    let antigravityAccounts = AntigravityAccountStore()
+
     // 常用文本
     let pasteStore = PasteItemStore()
     let pasteService = SystemPasteService()
